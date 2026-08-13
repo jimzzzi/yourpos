@@ -1,0 +1,24 @@
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS tax_inclusive BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS modifiers (
+  id SERIAL PRIMARY KEY,
+  store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  price NUMERIC(10,2) NOT NULL DEFAULT 0,
+  is_available BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS modifier_categories (
+  modifier_id INTEGER NOT NULL REFERENCES modifiers(id) ON DELETE CASCADE,
+  category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (modifier_id, category_id)
+);
+
+CREATE TABLE IF NOT EXISTS order_item_modifiers (
+  id SERIAL PRIMARY KEY,
+  order_item_id INTEGER NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+  modifier_id INTEGER,
+  name TEXT NOT NULL,
+  price NUMERIC(10,2) NOT NULL DEFAULT 0
+);

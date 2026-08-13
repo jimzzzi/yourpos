@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS dining_option TEXT NOT NULL DEFAULT 'dine_in';

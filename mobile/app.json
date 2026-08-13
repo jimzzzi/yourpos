@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "YourPOS",
+    "slug": "yourpos",
+    "version": "1.0.0",
+    "orientation": "default",
+    "android": {
+      "package": "com.yourcompany.yourpos",
+      "permissions": [
+        "CAMERA",
+        "VIBRATE"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.yourcompany.yourpos",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow this app to scan barcodes."
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow YourPOS to scan barcodes."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}
