@@ -4,7 +4,7 @@ require("dotenv").config();
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false, // This fixes the Neon ECONNRESET error
+    rejectUnauthorized: true, // This fixes the Neon ECONNRESET error
   },
 });
 

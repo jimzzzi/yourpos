@@ -5,17 +5,34 @@ const authenticateToken = require("../middleware/auth");
 const router = express.Router();
 router.use(authenticateToken);
 
-function getDays(req) {
+// Helper: parse date range from query params
+function parseDateRange(req) {
+  const from = req.query.from;
+  const to = req.query.to;
+  
+  if (from && to) {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    toDate.setHours(23, 59, 59, 999);
+    return { from: fromDate.toISOString(), to: toDate.toISOString() };
+  }
+  
+  // Fallback to days parameter for backward compatibility
   const days = parseInt(req.query.days, 10);
-  return Number.isNaN(days) || days <= 0 ? 31 : Math.min(days, 365);
+  const validDays = Number.isNaN(days) || days <= 0 ? 31 : Math.min(days, 365);
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (validDays > 1) start.setDate(start.getDate() - (validDays - 1));
+  return { from: start.toISOString(), to: now.toISOString() };
 }
 
 router.get("/sales", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const result = await db.query(
-      "SELECT DATE(created_at) AS date, SUM(total_amount) AS revenue, COUNT(id) AS order_count FROM orders WHERE status = 'completed' AND store_id = $1 AND created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY DATE(created_at) ORDER BY DATE(created_at) ASC",
-      [req.user.storeId, days]
+      "SELECT DATE(created_at) AS date, SUM(total_amount) AS revenue, COUNT(id) AS order_count FROM orders WHERE status = 'completed' AND store_id = $1 AND created_at >= $2 AND created_at <= $3 GROUP BY DATE(created_at) ORDER BY DATE(created_at) ASC",
+      [req.user.storeId, from, to]
     );
     res.json(result.rows);
   } catch (error) {
@@ -26,19 +43,19 @@ router.get("/sales", async (req, res) => {
 
 router.get("/summary", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const storeId = req.user.storeId;
     const ordersRes = await db.query(
-      "SELECT COALESCE(SUM(total_amount),0) AS revenue, COUNT(*)::int AS order_count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(total_amount),0) AS revenue, COUNT(*)::int AS order_count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= $2 AND created_at <= $3",
+      [storeId, from, to]
     );
     const itemsRes = await db.query(
-      "SELECT COALESCE(SUM(oi.quantity),0)::int AS items_sold FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(oi.quantity),0)::int AS items_sold FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= $2 AND o.created_at <= $3",
+      [storeId, from, to]
     );
     const refundsRes = await db.query(
-      "SELECT COALESCE(SUM(r.amount),0) AS refunded FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.store_id = $1 AND o.created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(r.amount),0) AS refunded FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.store_id = $1 AND o.created_at >= $2 AND o.created_at <= $3",
+      [storeId, from, to]
     );
     const revenue = Number(ordersRes.rows[0].revenue || 0);
     const orderCount = Number(ordersRes.rows[0].order_count || 0);
@@ -57,10 +74,10 @@ router.get("/summary", async (req, res) => {
 
 router.get("/top-products", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const result = await db.query(
-      "SELECT p.name, SUM(oi.quantity)::int AS quantity, SUM(oi.total_price) AS revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN variants v ON v.id = oi.variant_id JOIN products p ON p.id = v.product_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY p.name ORDER BY revenue DESC LIMIT 10",
-      [req.user.storeId, days]
+      "SELECT p.name, SUM(oi.quantity)::int AS quantity, SUM(oi.total_price) AS revenue FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN variants v ON v.id = oi.variant_id JOIN products p ON p.id = v.product_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= $2 AND o.created_at <= $3 GROUP BY p.name ORDER BY revenue DESC LIMIT 10",
+      [req.user.storeId, from, to]
     );
     res.json(result.rows);
   } catch (error) {
@@ -71,10 +88,10 @@ router.get("/top-products", async (req, res) => {
 
 router.get("/payments", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const result = await db.query(
-      "SELECT pay.method, SUM(pay.amount) AS amount, COUNT(*)::int AS count FROM payments pay JOIN orders o ON o.id = pay.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY pay.method ORDER BY amount DESC",
-      [req.user.storeId, days]
+      "SELECT pay.method, SUM(pay.amount) AS amount, COUNT(*)::int AS count FROM payments pay JOIN orders o ON o.id = pay.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= $2 AND o.created_at <= $3 GROUP BY pay.method ORDER BY amount DESC",
+      [req.user.storeId, from, to]
     );
     res.json(result.rows);
   } catch (error) {
@@ -85,10 +102,10 @@ router.get("/payments", async (req, res) => {
 
 router.get("/categories", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const result = await db.query(
-      "SELECT COALESCE(c.name, 'Uncategorized') AS name, SUM(oi.total_price) AS revenue, SUM(oi.quantity)::int AS quantity FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN variants v ON v.id = oi.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN categories c ON c.id = p.category_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY c.name ORDER BY revenue DESC",
-      [req.user.storeId, days]
+      "SELECT COALESCE(c.name, 'Uncategorized') AS name, SUM(oi.total_price) AS revenue, SUM(oi.quantity)::int AS quantity FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN variants v ON v.id = oi.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN categories c ON c.id = p.category_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= $2 AND o.created_at <= $3 GROUP BY c.name ORDER BY revenue DESC",
+      [req.user.storeId, from, to]
     );
     res.json(result.rows);
   } catch (error) {
@@ -99,10 +116,10 @@ router.get("/categories", async (req, res) => {
 
 router.get("/hourly", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const result = await db.query(
-      "SELECT EXTRACT(HOUR FROM created_at)::int AS hour, SUM(total_amount) AS revenue, COUNT(*)::int AS order_count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY hour ORDER BY hour ASC",
-      [req.user.storeId, days]
+      "SELECT EXTRACT(HOUR FROM created_at)::int AS hour, SUM(total_amount) AS revenue, COUNT(*)::int AS order_count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= $2 AND created_at <= $3 GROUP BY EXTRACT(HOUR FROM created_at) ORDER BY hour ASC",
+      [req.user.storeId, from, to]
     );
     res.json(result.rows);
   } catch (error) {
@@ -113,38 +130,38 @@ router.get("/hourly", async (req, res) => {
 
 router.get("/zreport", async (req, res) => {
   try {
-    const days = getDays(req);
+    const { from, to } = parseDateRange(req);
     const storeId = req.user.storeId;
 
     const salesRes = await db.query(
-      "SELECT COALESCE(SUM(discount_amount),0) AS discounts, COALESCE(SUM(total_amount),0) AS net_sales, COALESCE(SUM(tax_amount),0) AS tax, COUNT(*)::int AS order_count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(discount_amount),0) AS discounts, COALESCE(SUM(total_amount),0) AS net_sales, COALESCE(SUM(tax_amount),0) AS tax, COUNT(*)::int AS order_count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= $2 AND created_at <= $3",
+      [storeId, from, to]
     );
 
     const itemsRes = await db.query(
-      "SELECT COALESCE(SUM(oi.quantity),0)::int AS items_sold FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(oi.quantity),0)::int AS items_sold FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= $2 AND o.created_at <= $3",
+      [storeId, from, to]
     );
 
     const refundsRes = await db.query(
-      "SELECT COALESCE(SUM(r.amount),0) AS refunded FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.store_id = $1 AND o.created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(r.amount),0) AS refunded FROM refunds r JOIN orders o ON o.id = r.order_id WHERE o.store_id = $1 AND o.created_at >= $2 AND o.created_at <= $3",
+      [storeId, from, to]
     );
 
     const paymentsRes = await db.query(
-      "SELECT pay.method, COALESCE(SUM(pay.amount),0) AS amount FROM payments pay JOIN orders o ON o.id = pay.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY pay.method",
-      [storeId, days]
+      "SELECT pay.method, COALESCE(SUM(pay.amount),0) AS amount FROM payments pay JOIN orders o ON o.id = pay.order_id WHERE o.store_id = $1 AND o.status = 'completed' AND o.created_at >= $2 AND o.created_at <= $3 GROUP BY pay.method",
+      [storeId, from, to]
     );
 
     const cashRes = await db.query(
-      "SELECT COALESCE(SUM(CASE WHEN type = 'cash_in' THEN amount ELSE 0 END),0) AS cash_in, COALESCE(SUM(CASE WHEN type = 'cash_out' THEN amount ELSE 0 END),0) AS cash_out FROM cash_movements WHERE store_id = $1 AND created_at >= NOW() - INTERVAL '1 day' * $2",
-      [storeId, days]
+      "SELECT COALESCE(SUM(CASE WHEN type = 'cash_in' THEN amount ELSE 0 END),0) AS cash_in, COALESCE(SUM(CASE WHEN type = 'cash_out' THEN amount ELSE 0 END),0) AS cash_out FROM cash_movements WHERE store_id = $1 AND created_at >= $2 AND created_at <= $3",
+      [storeId, from, to]
     );
 
     const storeRes = await db.query("SELECT tax_inclusive, tax_rate FROM stores WHERE id = $1", [storeId]);
-	const diningRes = await db.query(
-      "SELECT dining_option, COALESCE(SUM(total_amount),0) AS amount, COUNT(*)::int AS count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= NOW() - INTERVAL '1 day' * $2 GROUP BY dining_option",
-      [storeId, days]
+    const diningRes = await db.query(
+      "SELECT dining_option, COALESCE(SUM(total_amount),0) AS amount, COUNT(*)::int AS count FROM orders WHERE store_id = $1 AND status = 'completed' AND created_at >= $2 AND created_at <= $3 GROUP BY dining_option",
+      [storeId, from, to]
     );
 
     const s = salesRes.rows[0];
@@ -165,7 +182,7 @@ router.get("/zreport", async (req, res) => {
       else cardSales += Number(p.amount || 0);
     });
 
-    const expectedCash = cashSales - refunded + cashIn - cashOut;
+    const expectedCash = cashSales + cashIn - cashOut
 
     res.json({
       gross_sales: gross,
@@ -180,7 +197,7 @@ router.get("/zreport", async (req, res) => {
       avg_order: orderCount > 0 ? net / orderCount : 0,
       cash_sales: cashSales,
       card_sales: cardSales,
-	  dining: diningRes.rows.map((r) => ({ dining_option: r.dining_option, amount: Number(r.amount || 0), count: Number(r.count || 0) })),
+      dining: diningRes.rows.map((r) => ({ dining_option: r.dining_option, amount: Number(r.amount || 0), count: Number(r.count || 0) })),
       cash_in: cashIn,
       cash_out: cashOut,
       expected_cash: expectedCash,

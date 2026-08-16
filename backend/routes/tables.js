@@ -12,12 +12,12 @@ router.get("/", async (req, res) => {
       [req.user.storeId]
     );
     const ordersRes = await db.query(
-      "SELECT id, table_id, items, note, dining_option FROM table_orders WHERE store_id = $1 AND status = 'open'",
+       "SELECT id, table_id, items, note, dining_option, created_at FROM table_orders WHERE store_id = $1 AND status = 'open'",
       [req.user.storeId]
     );
     const byTable = {};
     ordersRes.rows.forEach((o) => {
-      byTable[o.table_id] = { id: o.id, items: o.items, note: o.note, dining_option: o.dining_option };
+      byTable[o.table_id] = { id: o.id, items: o.items, note: o.note, dining_option: o.dining_option, created_at: o.created_at };
     });
     res.json(tablesRes.rows.map((t) => ({ id: t.id, name: t.name, open_order: byTable[t.id] || null })));
   } catch (error) {
@@ -60,9 +60,11 @@ router.put("/:id/order", async (req, res) => {
       [req.params.id, req.user.storeId]
     );
     if (existing.rows.length > 0) {
+      // Update existing order - DON'T change created_at
       await db.query("UPDATE table_orders SET items = $1, note = $2, updated_at = NOW() WHERE id = $3", [JSON.stringify(items), note, existing.rows[0].id]);
     } else {
-      await db.query("INSERT INTO table_orders (store_id, table_id, items, note) VALUES ($1, $2, $3, $4)", [req.user.storeId, req.params.id, JSON.stringify(items), note]);
+      // NEW order - explicitly set created_at
+      await db.query("INSERT INTO table_orders (store_id, table_id, items, note, created_at) VALUES ($1, $2, $3, $4, NOW())", [req.user.storeId, req.params.id, JSON.stringify(items), note]);
     }
     res.json({ success: true });
   } catch (error) {

@@ -86,7 +86,7 @@ router.get("/products", async (req, res) => {
     const search = toNullIfEmpty(req.query.search);
     const params = [storeId];
     let productQuery =
-      "SELECT p.id, p.name, p.image_url, p.description, p.track_stock, p.category_id, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.store_id = $1 AND p.is_available = true";
+            "SELECT p.id, p.name, p.image_url, p.description, p.track_stock, p.category_id, p.is_time_based, p.time_unit_minutes, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.store_id = $1 AND p.is_available = true";
     if (search) {
       params.push("%" + search + "%");
       productQuery +=
@@ -121,6 +121,8 @@ router.get("/products", async (req, res) => {
       image_url: row.image_url,
       description: row.description,
       track_stock: Boolean(row.track_stock),
+      is_time_based: Boolean(row.is_time_based),
+      time_unit_minutes: row.time_unit_minutes ? Number(row.time_unit_minutes) : null,
       category_id: row.category_id,
       category_name: row.category_name,
       variants: variantsByProduct[row.id] || [],
@@ -158,8 +160,8 @@ router.post("/products", async (req, res) => {
     }
     await client.query("BEGIN");
     const productResult = await client.query(
-      "INSERT INTO products (store_id, category_id, name, image_url, description, track_stock, is_available) VALUES ($1, $2, $3, $4, $5, $6, true) RETURNING id",
-      [storeId, req.body.category_id || null, name, toNullIfEmpty(req.body.image_url), toNullIfEmpty(req.body.description), parseTrackStock(req.body.track_stock)]
+      "INSERT INTO products (store_id, category_id, name, image_url, description, track_stock, is_time_based, time_unit_minutes, is_available) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING id",
+      [storeId, req.body.category_id || null, name, toNullIfEmpty(req.body.image_url), toNullIfEmpty(req.body.description), parseTrackStock(req.body.track_stock), Boolean(req.body.is_time_based), req.body.time_unit_minutes ? Number(req.body.time_unit_minutes) : null]
     );
     const productId = productResult.rows[0].id;
     for (const variant of validation.variants) {
@@ -204,10 +206,22 @@ router.put("/products/:id", async (req, res) => {
       variantsPayload = validation.variants;
     }
     await client.query("BEGIN");
+    
     await client.query(
-      "UPDATE products SET name = $1, image_url = $2, description = $3, track_stock = $4, category_id = $5, updated_at = NOW() WHERE id = $6 AND store_id = $7",
-      [name, toNullIfEmpty(req.body.image_url), toNullIfEmpty(req.body.description), parseTrackStock(req.body.track_stock), req.body.category_id || null, productId, storeId]
+      "UPDATE products SET name = $1, image_url = $2, description = $3, track_stock = $4, category_id = $5, is_time_based = $6, time_unit_minutes = $7, updated_at = NOW() WHERE id = $8 AND store_id = $9",
+      [
+        name,
+        toNullIfEmpty(req.body.image_url),
+        toNullIfEmpty(req.body.description),
+        parseTrackStock(req.body.track_stock),
+        req.body.category_id || null,
+        Boolean(req.body.is_time_based),
+        req.body.time_unit_minutes ? Number(req.body.time_unit_minutes) : null,
+        productId,
+        storeId
+      ]
     );
+    
     if (variantsPayload) {
       const existingVariants = await client.query("SELECT id FROM variants WHERE product_id = $1", [productId]);
       const existingIds = existingVariants.rows.map((row) => row.id);

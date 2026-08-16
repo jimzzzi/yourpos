@@ -5,6 +5,26 @@ const authenticateToken = require("../middleware/auth");
 const router = express.Router();
 router.use(authenticateToken);
 
+// Helper: parse date range from query params
+function parseDateRange(query) {
+  const from = query.from;
+  const to = query.to;
+  
+  if (from && to) {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    toDate.setHours(23, 59, 59, 999);
+    return { from: fromDate.toISOString(), to: toDate.toISOString() };
+  }
+  
+  const days = Math.min(365, Math.max(1, Number(query.days || 7)));
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (days > 1) start.setDate(start.getDate() - (days - 1));
+  return { from: start.toISOString(), to: now.toISOString() };
+}
+
 const statsSql = `
   SELECT COUNT(*) FILTER (WHERE status <> 'refunded')::int AS orders,
          COALESCE(SUM(CASE WHEN status <> 'refunded' THEN total_amount ELSE 0 END), 0) AS gross,
@@ -14,7 +34,7 @@ const statsSql = `
   FROM orders
   WHERE store_id = $1
     AND created_at >= $2
-    AND ($3::timestamptz IS NULL OR created_at < $3)
+    AND created_at <= $3
 `;
 
 const dailySql = `
@@ -25,7 +45,7 @@ const dailySql = `
   FROM orders
   WHERE store_id = $1
     AND created_at >= $2
-    AND ($3::timestamptz IS NULL OR created_at < $3)
+    AND created_at <= $3
   GROUP BY 1
   ORDER BY 1
 `;
@@ -56,31 +76,23 @@ function shape(row) {
 
 router.get("/dashboard", async (req, res) => {
   try {
-    const days = Math.min(365, Math.max(1, Number(req.query.days || 7)));
     const storeId = req.user.storeId;
-    const openStr = req.query.open || null;
-
-    const now = new Date();
-    const startCur = new Date(now);
-    if (openStr) {
-      // Business day starts at opening time (e.g. 08:00), not midnight
-      const parts = String(openStr).split(":");
-      startCur.setHours(Number(parts[0]) || 0, Number(parts[1]) || 0, 0, 0);
-      if (now < startCur) startCur.setDate(startCur.getDate() - 1); // after midnight → still yesterday's shift
-    } else {
-      startCur.setHours(0, 0, 0, 0);
-    }
-    if (days > 1) startCur.setDate(startCur.getDate() - (days - 1));
-    const startPrev = new Date(startCur);
-    startPrev.setDate(startPrev.getDate() - days);
-
-    const [curRow] = (await db.query(statsSql, [storeId, startCur.toISOString(), null])).rows;
-    const [prevRow] = (await db.query(statsSql, [storeId, startPrev.toISOString(), startCur.toISOString()])).rows;
-    const daily = (await db.query(dailySql, [storeId, startCur.toISOString(), null])).rows;
-
+    const { from, to } = parseDateRange(req.query);
+    
+    // Calculate "previous period" for comparison
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    const durationMs = toDate.getTime() - fromDate.getTime();
+    const prevTo = new Date(fromDate.getTime() - 1);
+    const prevFrom = new Date(prevTo.getTime() - durationMs);
+    
+    const [curRow] = (await db.query(statsSql, [storeId, from, to])).rows;
+    const [prevRow] = (await db.query(statsSql, [storeId, prevFrom.toISOString(), prevTo.toISOString()])).rows;
+    const daily = (await db.query(dailySql, [storeId, from, to])).rows;
+    
     const current = shape(curRow);
     const previous = shape(prevRow);
-
+    
     res.json({
       current,
       previous,
@@ -92,6 +104,7 @@ router.get("/dashboard", async (req, res) => {
         discounts: Number(d.discounts || 0),
         orders: Number(d.orders || 0),
       })),
+      dateRange: { from, to },
     });
   } catch (error) {
     console.error("dashboard error:", error);

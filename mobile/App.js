@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView } from "react-native";
 import { AuthProvider, useAuth } from "./src/auth/AuthContext";
 import { RightsProvider, useRights } from "./src/auth/RightsContext";
@@ -18,6 +18,7 @@ import ImportExportScreen from "./src/screens/ImportExportScreen";
 import LanguageScreen from "./src/screens/LanguageScreen";
 import UsersScreen from "./src/screens/UsersScreen";
 import { useOfflineSync } from "./src/hooks/useOfflineSync";
+import CustomerMenuScreen from "./src/screens/CustomerMenuScreen";
 
 function SplashLoading() {
   return (
@@ -211,7 +212,24 @@ function MainApp() {
 
 function RootNavigator() {
   const { user, loading } = useAuth();
+  
+  // Read QR param IMMEDIATELY - no login needed for customers
+  const qrTableId = React.useMemo(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const qrParam = params.get("qr");
+      if (qrParam) return parseInt(qrParam);
+    }
+    return null;
+  }, []);
+
   if (loading) return <SplashLoading />;
+  
+  // QR menu is PUBLIC - customers don't need to login!
+  if (qrTableId) {
+    return <CustomerMenuScreen tableId={qrTableId} />;
+  }
+  
   if (!user) return <AuthScreen />;
   return <MainApp />;
 }

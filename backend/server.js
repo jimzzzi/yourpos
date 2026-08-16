@@ -15,11 +15,19 @@ const storeRoutes = require("./routes/store");
 const cashRoutes = require("./routes/cash");
 const adminRoutes = require("./routes/admin");
 const tablesRoutes = require("./routes/tables");
+const qrRoutes = require("./routes/qr");
 
 const app = express();
 
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(cors({
+  origin: true,  // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -69,6 +77,7 @@ app.use("/api/store", storeRoutes);
 app.use("/api/cash", cashRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/tables", tablesRoutes);
+app.use("/api/qr", qrRoutes);
 app.use("/api/reports", require("./routes/reports"));
 app.use("/api/telegram", require("./routes/telegram"));
 app.use("/api/users", require("./routes/users"));

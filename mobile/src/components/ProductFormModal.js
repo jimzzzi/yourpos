@@ -15,6 +15,8 @@ export default function ProductFormModal({ visible, product, categories, onClose
   const [imageUrl, setImageUrl] = useState("");
   const [description, setDescription] = useState("");
   const [trackStock, setTrackStock] = useState(false);
+  const [isTimeBased, setIsTimeBased] = useState(false);
+  const [timeUnitMinutes, setTimeUnitMinutes] = useState("");
   const [variants, setVariants] = useState([{ ...emptyVariant }]);
   const [newCategoryMode, setNewCategoryMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -32,6 +34,8 @@ export default function ProductFormModal({ visible, product, categories, onClose
       setImageUrl(product.image_url || "");
       setDescription(product.description || "");
       setTrackStock(Boolean(product.track_stock));
+	  setIsTimeBased(Boolean(product.is_time_based));
+      setTimeUnitMinutes(product.time_unit_minutes ? String(product.time_unit_minutes) : "");
       const existing = (product.variants || []).map((v) => ({
         id: v.id,
         name: v.name === "Default" ? "" : v.name || "",
@@ -47,6 +51,8 @@ export default function ProductFormModal({ visible, product, categories, onClose
       setImageUrl("");
       setDescription("");
       setTrackStock(false);
+	  setIsTimeBased(false);
+      setTimeUnitMinutes("");
       setVariants([{ ...emptyVariant }]);
     }
   }, [visible, product]);
@@ -179,6 +185,8 @@ export default function ProductFormModal({ visible, product, categories, onClose
       image_url: imageUrl.trim(),
       description: description.trim(),
       track_stock: trackStock,
+	  is_time_based: isTimeBased,
+      time_unit_minutes: isTimeBased && timeUnitMinutes ? Number(timeUnitMinutes) : null,
       variants: variants.map((variant) => ({
         id: variant.id || undefined,
         name: variant.name.trim() || "Default",
@@ -237,6 +245,22 @@ export default function ProductFormModal({ visible, product, categories, onClose
               </TouchableOpacity>
             </View>
             <Text style={styles.hintText}>{trackStock ? t("stockHintOn") : t("stockHintOff")}</Text>
+			<Text style={styles.label}>⏱ Time-Based Billing</Text>
+            <View style={styles.categoryRow}>
+              <TouchableOpacity style={[styles.categoryChip, isTimeBased && styles.categoryChipActive]} onPress={() => setIsTimeBased(true)}>
+                <Text style={[styles.categoryChipText, isTimeBased && styles.categoryChipTextActive]}>⏱ Time-Based</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.categoryChip, !isTimeBased && styles.categoryChipActive]} onPress={() => setIsTimeBased(false)}>
+                <Text style={[styles.categoryChipText, !isTimeBased && styles.categoryChipTextActive]}>Regular Item</Text>
+              </TouchableOpacity>
+            </View>
+            {isTimeBased ? (
+              <View style={{ marginTop: 10 }}>
+                <Text style={styles.smallLabel}>Time unit (minutes)</Text>
+                <TextInput style={styles.input} value={timeUnitMinutes} onChangeText={setTimeUnitMinutes} keyboardType="number-pad" placeholder="60" />
+                <Text style={styles.hintText}>e.g. 60 = charge price every 60 minutes</Text>
+              </View>
+            ) : null}
 
             <Text style={styles.label}>{t("category")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow}>

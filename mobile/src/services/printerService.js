@@ -13,8 +13,8 @@ function leftRight(left, right, width) {
   return l + " ".repeat(space) + r;
 }
 
-function divider(width) {
-  return "-".repeat(width);
+function divider(width, char = "-") {
+  return char.repeat(width);
 }
 
 function escapeHtml(text) {
@@ -46,23 +46,24 @@ function buildReceiptParts(args) {
   const vatInclusive = Boolean(store && store.tax_inclusive);
   const rate = Number(store && store.tax_rate ? store.tax_rate : 0);
 
-  // ✅ FIX 1: Use original sale date if provided, otherwise NOW
   const originalDate = a.createdAt ? new Date(a.createdAt).toLocaleString() : new Date().toLocaleString();
   const dateLine = originalDate;
-  
-  // ✅ FIX 2: Add "Printed:" line for reprints
   const printedLine = a.duplicate ? "Printed: " + new Date().toLocaleString() : null;
-  
-  // ✅ FIX 3: Bill number always prints (fallback to order ID)
-        const billLine = a.billNumber ? "Bill No: " + String(a.billNumber).padStart(6, "0") : null;
-    
+  const billLine = a.billNumber ? "Bill No: " + String(a.billNumber).padStart(6, "0") : null;
   const diningLine = a.dining ? (a.dining === "takeaway" ? "TAKEAWAY" : "DINE IN") : null;
   const tableLine = a.table ? "TABLE: " + a.table : null;
 
   const itemsLines = [];
   (a.items || []).forEach((item) => {
-    itemsLines.push(String(item.name || "Item").slice(0, width));
+    let itemDisplay = String(item.name || "Item");
+    if (item.time_elapsed_minutes) {
+      itemDisplay += " (" + item.time_elapsed_minutes + "min)";
+    }
+    itemsLines.push(itemDisplay.slice(0, width));
     if (item.description) itemsLines.push("  " + String(item.description).slice(0, Math.max(8, width - 2)));
+    if (item.time_elapsed_minutes) {
+      itemsLines.push("  " + item.time_units + " x " + item.time_unit_minutes + "min @ " + Number(item.original_price || item.price).toFixed(2));
+    }
     (item.modifiers || []).forEach((m) => {
       itemsLines.push(" + " + String(m.name || "").slice(0, Math.max(8, width - 4)));
     });
@@ -97,19 +98,18 @@ function buildReceiptParts(args) {
     }
   }
 
-  return { rs, width, headerLines, dateLine, printedLine, billLine, diningLine, tableLine, itemsLines, totals, totalLabel, totalValue, pays, footerLines };
+  return { rs, width, headerLines, footerLines, dateLine, printedLine, billLine, diningLine, tableLine, itemsLines, totals, totalLabel, totalValue, pays };
 }
 
 export function buildReceiptText(args) {
   const p = buildReceiptParts(args);
   const lines = [];
-  
-  // ✅ BANNER: Copy bill banner at the very top
+
   if (args && args.duplicate) {
     lines.push(centerText("★ COPY / DUPLICATE BILL ★", p.width));
     lines.push("");
   }
-  
+
   p.headerLines.forEach((l) => lines.push(centerText(l, p.width)));
   lines.push(centerText(p.dateLine, p.width));
   if (p.printedLine) lines.push(centerText(p.printedLine, p.width));
@@ -137,12 +137,10 @@ export function buildReceiptHtml(args) {
   const logoFooter = p.rs.footerLogo ? '<img src="' + p.rs.footerLogo + '" class="logo" />' : "";
 
   let headerHtml = "";
-  
-  // ✅ BANNER: Copy bill banner at the very top
   if (args && args.duplicate) {
     headerHtml += '<div class="bigcenter" style="font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 2px dashed #000; padding-bottom: 4px;">★ COPY / DUPLICATE BILL ★</div>';
   }
-  
+
   p.headerLines.forEach((l) => { headerHtml += '<div class="c">' + escapeHtml(l) + "</div>"; });
   headerHtml += '<div class="c">' + escapeHtml(p.dateLine) + "</div>";
   if (p.printedLine) headerHtml += '<div class="c" style="font-size: 11px;">' + escapeHtml(p.printedLine) + "</div>";
@@ -178,12 +176,99 @@ export function buildReceiptHtml(args) {
   );
 }
 
-// THE METHOD THAT WORKED ON YOUR PRINTER FROM DAY 1:
+
+// ========== KITCHEN TICKET ENGINE (BLACK & BOLD) ==========
+export function buildKitchenTicketHtml(args) {
+  const a = args || {};
+  const type = String(a.type || "NEW").toUpperCase();
+  const items = a.items || [];
+  const table = a.table || "-";
+  const billNumber = a.billNumber ? String(a.billNumber).padStart(6, "0") : null;
+  const voidedItem = a.voidedItem;
+  const voidedBy = a.voidedBy || "";
+  const voidReason = a.voidReason || "";
+  const is58 = a.paperSize === "58";
+  const paper = is58 ? "58mm" : "80mm";
+  const padding = is58 ? "2mm 3mm" : "2mm 4mm";
+  const now = new Date().toLocaleString();
+
+  let headerText = "*** NEW ORDER ***";
+  if (type === "ADDITION") headerText = "*** ADDITION ***";
+  if (type === "VOID") headerText = "###  VOID  ###";
+
+  let html = "<html><head><title>Kitchen</title><style>";
+  html += "@page { size: " + paper + " auto; margin: 0; }";
+  html += "html, body { margin: 0; padding: 0; }";
+  html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
+  html += ".header { text-align: center; font-size: 20px; font-weight: 900; letter-spacing: 2px; margin: 4px 0 8px; }";
+  html += ".table-box { text-align: center; font-size: 30px; font-weight: 900; padding: 6px; border: 3px solid #000; margin-bottom: 6px; }";
+  html += ".meta { text-align: center; font-size: 13px; margin-bottom: 6px; }";
+  html += ".item { margin: 6px 0; padding: 4px 0; border-bottom: 2px solid #000; }";
+  html += ".item-name { font-size: 16px; font-weight: 900; }";
+  html += ".item-qty { font-size: 18px; font-weight: 900; margin-right: 6px; }";
+  html += ".modifier { font-size: 13px; font-weight: 900; padding-left: 18px; margin-top: 2px; }";
+  html += ".void-line { text-align: center; font-size: 13px; font-weight: 900; margin: 4px 0; }";
+  html += ".footer { margin-top: 10px; text-align: center; font-size: 12px; border-top: 2px solid #000; padding-top: 6px; }";
+  html += "</style></head><body>";
+
+  html += '<div class="header">' + escapeHtml(headerText) + "</div>";
+
+  if (type === "VOID" && voidedItem) {
+    html += '<div class="table-box">' + escapeHtml(table) + "</div>";
+    if (billNumber) html += '<div class="meta">Bill #' + escapeHtml(billNumber) + "</div>";
+    html += '<div class="item"><span class="item-qty">1x</span><span class="item-name">' + escapeHtml(voidedItem.name) + "</span></div>";
+    if (voidedItem.modifiers && voidedItem.modifiers.length) {
+      voidedItem.modifiers.forEach((m) => { html += '<div class="modifier">+ ' + escapeHtml(m.name) + "</div>"; });
+    }
+    if (voidReason) html += '<div class="void-line">Reason: ' + escapeHtml(voidReason) + "</div>";
+    if (voidedBy) html += '<div class="void-line">By: ' + escapeHtml(voidedBy) + "</div>";
+  } else {
+    html += '<div class="table-box">' + escapeHtml(table) + "</div>";
+    if (billNumber) html += '<div class="meta">Bill #' + escapeHtml(billNumber) + "</div>";
+    if (a.dining) html += '<div class="meta">' + escapeHtml(a.dining === "takeaway" ? "TAKEAWAY" : "DINE-IN") + "</div>";
+
+    items.forEach((item) => {
+      html += '<div class="item"><span class="item-qty">' + (item.quantity || 1) + "x</span><span class=\"item-name\">" + escapeHtml(item.name) + "</span></div>";
+      if (item.description) html += '<div class="modifier">' + escapeHtml(item.description) + "</div>";
+      (item.modifiers || []).forEach((m) => {
+        html += '<div class="modifier">* ' + escapeHtml(m.name) + "</div>";
+      });
+      if (item.notes) html += '<div class="modifier">NOTE: ' + escapeHtml(item.notes) + "</div>";
+    });
+  }
+
+  html += '<div class="footer">' + escapeHtml(now) + "</div>";
+  html += "</body></html>";
+  return html;
+}
+
+export function getKitchenPrinters(settings) {
+  const s = settings || {};
+  if (Array.isArray(s.kitchenPrinters) && s.kitchenPrinters.length) return s.kitchenPrinters;
+  if (s.kitchenPrinter) return [{ id: "kp1", name: "Kitchen 1", ...s.kitchenPrinter }];
+  return [];
+}
+
+export function routeItemsForKitchen(items, settings) {
+  const kps = getKitchenPrinters(settings).filter((k) => k.enabled !== false);
+  if (!kps.length) return [];
+  const routing = settings.kpRouting || {};
+  const groups = {};
+  (items || []).forEach((item) => {
+    let pid = routing.categories ? routing.categories[String(item.category_id)] : null;
+    if (!pid) pid = routing.default || null;
+    let printer = kps.find((k) => k.id === pid);
+    if (!printer) printer = kps[0];
+    if (!groups[printer.id]) groups[printer.id] = { printer, items: [] };
+    groups[printer.id].items.push(item);
+  });
+  return Object.values(groups);
+}
+
 function printViaBrowser(html) {
   if (typeof document === "undefined") {
     return { success: false, error: "Printing not supported on this device." };
   }
-  console.log("[PRINT] creating print frame...");
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -202,7 +287,6 @@ function printViaBrowser(html) {
     try {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
-      console.log("[PRINT] print dialog opened ✅");
     } catch (e) {
       console.error("[PRINT] print failed:", e);
     }
@@ -214,12 +298,19 @@ function printViaBrowser(html) {
   return { success: true };
 }
 
+async function sendToNetworkPrinter(address, port, textBody) {
+  await fetch("http://" + address + ":" + (port || 9100) + "/print", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: textBody,
+  });
+}
+
 export async function printReceipt(args) {
   try {
     const settings = (args && args.settings) || {};
     const printer = settings.printer || { enabled: false };
     const isTest = args && args.orderId === "TEST000123";
-    console.log("[PRINT] printer enabled:", printer.enabled, "| test mode:", isTest);
 
     if (!printer.enabled && !isTest) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
@@ -229,11 +320,7 @@ export async function printReceipt(args) {
 
     if (printer.connection === "network" && printer.address) {
       try {
-        await fetch("http://" + printer.address + ":" + (printer.port || 9100) + "/print", {
-          method: "POST",
-          headers: { "Content-Type": "text/plain" },
-          body: buildReceiptText(args),
-        });
+        await sendToNetworkPrinter(printer.address, printer.port, buildReceiptText(args));
         return { success: true };
       } catch (error) {
         const fallback = printViaBrowser(html);
@@ -247,4 +334,119 @@ export async function printReceipt(args) {
     console.error("[PRINT] error:", error);
     return { success: false, error: (error && error.message) || "Print failed." };
   }
+}
+
+export async function printKitchenTicket(args) {
+  try {
+    const settings = (args && args.settings) || {};
+    let kp = args.printer || null;
+    if (!kp) {
+      const list = getKitchenPrinters(settings);
+      kp = list[0] || null;
+    }
+    if (!kp || kp.enabled === false) {
+      return { success: false, error: "Kitchen printer disabled." };
+    }
+
+    const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
+
+    if (kp.connection === "network" && kp.address) {
+      try {
+        await sendToNetworkPrinter(kp.address, kp.port, html);
+        return { success: true };
+      } catch (error) {
+        const fallback = printViaBrowser(html);
+        if (fallback.success) return { success: true, warning: "Network KP unreachable - browser used." };
+        return { success: false, error: "KP unreachable." };
+      }
+    }
+
+    return printViaBrowser(html);
+  } catch (error) {
+    console.error("[KP] error:", error);
+    return { success: false, error: error.message };
+  }
+  
+}
+// ========== QR ORDERING STICKER PRINTER ==========
+function qrStyleHtml() {
+  return (
+    "@page { size: 80mm auto; margin: 0; }" +
+    "html, body { margin: 0; padding: 0; }" +
+    "body { box-sizing: border-box; width: 80mm; font-family: Arial, sans-serif; color: #000; }" +
+    ".page { padding: 4mm; text-align: center; }" +
+    ".store { font-size: 15px; font-weight: bold; margin-bottom: 2mm; }" +
+    ".scan { font-size: 11px; font-weight: bold; margin-bottom: 3mm; letter-spacing: 1px; }" +
+    ".qr { width: 58mm; height: 58mm; }" +
+    ".table { font-size: 18px; font-weight: 900; margin-top: 3mm; border: 2px solid #000; display: inline-block; padding: 1.5mm 6mm; }" +
+    ".foot { font-size: 9px; margin-top: 3mm; color: #444; }"
+  );
+}
+
+function qrPageHtml(storeName, tableName, qrUrl) {
+  const qrImage = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(qrUrl);
+  return (
+    '<div class="store">' + escapeHtml(storeName) + "</div>" +
+    '<div class="scan">SCAN TO VIEW MENU &amp; ORDER</div>' +
+    '<img class="qr" src="' + qrImage + '" />' +
+    '<div class="table">' + escapeHtml(tableName) + "</div>" +
+    '<div class="foot">Scan • Order • We bring it to your table</div>'
+  );
+}
+
+function printViaBrowserWaitImages(html) {
+  if (typeof document === "undefined") {
+    return { success: false, error: "Printing not supported on this device." };
+  }
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  const doPrint = () => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {}
+  };
+
+  const imgs = doc.images ? Array.from(doc.images) : [];
+  if (imgs.length === 0) {
+    setTimeout(doPrint, 400);
+  } else {
+    let loaded = 0;
+    const tick = () => { loaded++; if (loaded >= imgs.length) setTimeout(doPrint, 200); };
+    imgs.forEach((img) => {
+      if (img.complete) tick();
+      else { img.onload = tick; img.onerror = tick; }
+    });
+    setTimeout(doPrint, 3000);
+  }
+
+  setTimeout(() => {
+    try { document.body.removeChild(iframe); } catch (e) {}
+  }, 60000);
+  return { success: true };
+}
+
+export function printQRSheet(args) {
+  const a = args || {};
+  const html = "<html><head><style>" + qrStyleHtml() + ".page { page-break-after: auto; }</style></head><body><div class='page'>" + qrPageHtml(a.storeName, a.tableName, a.qrUrl) + "</div></body></html>";
+  return printViaBrowserWaitImages(html);
+}
+
+export function printQRSheets(args) {
+  const a = args || {};
+  const pages = (a.tables || []).map((tb) => "<div class='page'>" + qrPageHtml(a.storeName, tb.name, a.qrBase + "/?qr=" + tb.id) + "</div>").join("");
+  const html = "<html><head><style>" + qrStyleHtml() + ".page { page-break-after: always; }</style></head><body>" + pages + "</body></html>";
+  return printViaBrowserWaitImages(html);
 }

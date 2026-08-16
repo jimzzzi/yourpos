@@ -30,6 +30,221 @@ function BusinessHoursCard() {
     </View>
   );
 }
+function QROrderingCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const { store } = useAuth();  // ← NEW: get real store from auth
+  const save = ctx.updateSettings || (() => {});
+  const on = Boolean(settings.qrOrderingEnabled);
+  const [tables, setTables] = useState([]);
+
+  useEffect(() => {
+    if (!on) return;
+    (async () => {
+      try {
+        const mod = await import("../api/backoffice");
+        setTables((await mod.backofficeApi.getTables()) || []);
+      } catch (e) {}
+    })();
+  }, [on]);
+
+  const qrBase = typeof window !== "undefined" ? window.location.origin : "";
+  
+  // FIX: safely extract store name from any source
+  const rawLine = settings.receipt?.headerLines?.[0];
+  const firstHeaderLine = rawLine 
+    ? (typeof rawLine === "string" ? rawLine : (rawLine.text || "")) 
+    : "";
+  const storeName = 
+    (store && store.name) ||              // ← Primary: real store name
+    firstHeaderLine ||                     // ← Fallback 1: receipt header
+    settings.receipt?.headerText ||        // ← Fallback 2: legacy text
+    "OUR STORE";                           // ← Final fallback
+
+  const printOne = async (tb) => {
+    try {
+      const mod = await import("../services/printerService");
+      mod.printQRSheet({ storeName, tableName: tb.name, qrUrl: qrBase + "/?qr=" + tb.id });
+    } catch (e) { Alert.alert("❌", e.message); }
+  };
+
+  const printAll = async () => {
+    try {
+      const mod = await import("../services/printerService");
+      mod.printQRSheets({ storeName, tables, qrBase });
+    } catch (e) { Alert.alert("❌", e.message); }
+  };
+
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>📲 QR Ordering (Self-Order)</Text>
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: on ? "#43A047" : "#fff", borderWidth: 2, borderColor: on ? "#43A047" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} onPress={() => save({ qrOrderingEnabled: true })}>
+          <Text style={{ color: on ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: !on ? "#EF4444" : "#fff", borderWidth: 2, borderColor: !on ? "#EF4444" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} onPress={() => save({ qrOrderingEnabled: false })}>
+          <Text style={{ color: !on ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 10 }}>Customers scan the QR on their table to browse the menu and order from their phone. Orders arrive in your POS for approval.</Text>
+      {on ? (
+        <View>
+          {tables.map((tb) => (
+            <View key={tb.id} style={{ flexDirection: "row", alignItems: "center", marginBottom: 6, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}>
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: "600", color: "#334155" }}>🪑 {tb.name}</Text>
+              <TouchableOpacity style={{ backgroundColor: "#0EA5E9", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }} onPress={() => printOne(tb)}>
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🖨 Print QR</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity style={{ backgroundColor: "#0F172A", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 6 }} onPress={printAll}>
+            <Text style={{ color: "#fff", fontWeight: "bold" }}>🖨 Print ALL Table QRs</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 8 }}>💡 Tip: print stickers from your LIVE app (Vercel) so the QR links to your online menu.</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TableTimingCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const save = ctx.updateSettings || (() => {});
+  const on = Boolean(settings.tableTimingEnabled);
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>⏱ Table Timing (Snooker Mode)</Text>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: on ? "#43A047" : "#fff", borderWidth: 2, borderColor: on ? "#43A047" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} onPress={() => save({ tableTimingEnabled: true })}>
+          <Text style={{ color: on ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: !on ? "#EF4444" : "#fff", borderWidth: 2, borderColor: !on ? "#EF4444" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} onPress={() => save({ tableTimingEnabled: false })}>
+          <Text style={{ color: !on ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 8 }}>When ON, occupied tables show a live timer: 🟢 under 30 min, 🟠 under 1 hour, 🔴 over 1 hour.</Text>
+    </View>
+  );
+}
+
+function KitchenPrinterCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const { t } = useI18n();
+  const save = ctx.updateSettings || (() => {});
+  const [cats, setCats] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const mod = await import("../api/inventory");
+        setCats((await mod.inventoryApi.getCategories()) || []);
+      } catch (e) {}
+    })();
+  }, []);
+
+  const kps = Array.isArray(settings.kitchenPrinters) && settings.kitchenPrinters.length
+    ? settings.kitchenPrinters
+    : settings.kitchenPrinter
+      ? [{ id: "kp1", name: "Kitchen 1", ...settings.kitchenPrinter }]
+      : [];
+  const routing = settings.kpRouting || { default: kps[0] ? kps[0].id : "kp1", categories: {} };
+  const setKps = (next) => save({ kitchenPrinters: next });
+  const setRouting = (next) => save({ kpRouting: { default: routing.default, categories: {}, ...next } });
+
+  const updateKP = (id, patch) => setKps(kps.map((k) => (k.id === id ? { ...k, ...patch } : k)));
+  const addKP = () => setKps([...kps, { id: "kp" + Date.now(), name: "Kitchen " + (kps.length + 1), enabled: true, connection: "browser", paperSize: "80" }]);
+  const removeKP = (id) => setKps(kps.filter((k) => k.id !== id));
+
+  const testKP = async (kp) => {
+    try {
+      const mod = await import("../services/printerService");
+      const res = await mod.printKitchenTicket({
+        type: "NEW",
+        table: "TEST",
+        billNumber: 999,
+        items: [{ name: "Test Pasta", quantity: 2, category_id: null, modifiers: [{ name: "NO SPICE" }] }],
+        settings,
+        printer: kp,
+      });
+      if (res.success) Alert.alert("✅", kp.name + ": ticket sent!");
+      else Alert.alert("❌", res.error || "Failed");
+    } catch (e) {
+      Alert.alert("❌", e.message);
+    }
+  };
+
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>🍳 {t("kitchenPrinter") || "Kitchen Printer"}</Text>
+
+      {kps.map((kp) => (
+        <View key={kp.id} style={{ borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, padding: 12, marginBottom: 12, backgroundColor: "#F8FAFC" }}>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, backgroundColor: "#fff", color: "#0F172A", fontWeight: "bold" }} value={kp.name} onChangeText={(v) => updateKP(kp.id, { name: v })} />
+            <TouchableOpacity style={{ backgroundColor: kp.enabled === false ? "#94A3B8" : "#43A047", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }} onPress={() => updateKP(kp.id, { enabled: kp.enabled === false })}>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>{kp.enabled === false ? "OFF" : "ON"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ backgroundColor: "#0EA5E9", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10 }} onPress={() => testKP(kp)}>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🖨</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ backgroundColor: "#EF4444", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10 }} onPress={() => removeKP(kp.id)}>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            {["browser", "network"].map((c) => (
+              <TouchableOpacity key={c} style={{ flex: 1, backgroundColor: kp.connection === c ? "#43A047" : "#fff", borderWidth: 1, borderColor: kp.connection === c ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 8, alignItems: "center" }} onPress={() => updateKP(kp.id, { connection: c })}>
+                <Text style={{ color: kp.connection === c ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{c.toUpperCase()}</Text>
+              </TouchableOpacity>
+            ))}
+            {["58", "80"].map((s) => (
+              <TouchableOpacity key={s} style={{ flex: 1, backgroundColor: kp.paperSize === s ? "#43A047" : "#fff", borderWidth: 1, borderColor: kp.paperSize === s ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 8, alignItems: "center" }} onPress={() => updateKP(kp.id, { paperSize: s })}>
+                <Text style={{ color: kp.paperSize === s ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{s}mm</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {kp.connection === "network" ? (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TextInput style={{ flex: 2, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} value={kp.address || ""} onChangeText={(v) => updateKP(kp.id, { address: v })} placeholder="192.168.0.200" placeholderTextColor="#94A3B8" />
+              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} value={kp.port || ""} onChangeText={(v) => updateKP(kp.id, { port: v })} placeholder="9100" keyboardType="number-pad" />
+            </View>
+          ) : null}
+        </View>
+      ))}
+
+      <TouchableOpacity style={{ backgroundColor: "#0F172A", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 14 }} onPress={addKP}>
+        <Text style={{ color: "#fff", fontWeight: "bold" }}>➕ Add Kitchen Printer</Text>
+      </TouchableOpacity>
+
+      <Text style={{ fontSize: 14, fontWeight: "bold", color: "#0F172A", marginBottom: 8 }}>🎯 Item Routing</Text>
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 8 }}>Default printer for all items:</Text>
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        {kps.map((kp) => (
+          <TouchableOpacity key={kp.id} style={{ backgroundColor: routing.default === kp.id ? "#43A047" : "#fff", borderWidth: 1, borderColor: routing.default === kp.id ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }} onPress={() => setRouting({ ...routing, default: kp.id })}>
+            <Text style={{ color: routing.default === kp.id ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{kp.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 8 }}>Category overrides (optional):</Text>
+      {cats.map((c) => (
+        <View key={c.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "#334155" }} numberOfLines={1}>{c.name}</Text>
+          <TouchableOpacity style={{ backgroundColor: !routing.categories[String(c.id)] ? "#43A047" : "#fff", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }} onPress={() => { const next = { ...routing.categories }; delete next[String(c.id)]; setRouting({ ...routing, categories: next }); }}>
+            <Text style={{ color: !routing.categories[String(c.id)] ? "#fff" : "#64748B", fontSize: 11, fontWeight: "bold" }}>Default</Text>
+          </TouchableOpacity>
+          {kps.map((kp) => (
+            <TouchableOpacity key={kp.id} style={{ backgroundColor: routing.categories[String(c.id)] === kp.id ? "#43A047" : "#fff", borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }} onPress={() => setRouting({ ...routing, categories: { ...routing.categories, [String(c.id)]: kp.id } })}>
+              <Text style={{ color: routing.categories[String(c.id)] === kp.id ? "#fff" : "#64748B", fontSize: 11, fontWeight: "bold" }}>{kp.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 
 function TelegramCard() {
   const { t } = useI18n();
@@ -326,6 +541,13 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+           <Text style={styles.sectionTitle}>⏱ Table Timing</Text>
+        <TableTimingCard />
+		<Text style={styles.sectionTitle}>📲 QR Ordering</Text>
+        <QROrderingCard />
+
+        <Text style={styles.sectionTitle}>{t("kitchfenPrinter") || "Kitchen Printer"}</Text>
+        <KitchenPrinterCard />
 
         <Text style={styles.sectionTitle}>{t("printer")}</Text>
         <View style={styles.card}>

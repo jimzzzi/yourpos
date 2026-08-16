@@ -1,5 +1,13 @@
 import { api } from "./client";
 
+// Helper: build params object for date range or days
+function buildParams(daysOrRange) {
+  if (daysOrRange && typeof daysOrRange === "object" && daysOrRange.from && daysOrRange.to) {
+    return { from: daysOrRange.from, to: daysOrRange.to };
+  }
+  return { days: daysOrRange || 7 };
+}
+
 export const backofficeApi = {
   async getModifiers() {
     const r = await api.get("/modifiers");
@@ -25,44 +33,44 @@ export const backofficeApi = {
     const r = await api.put("/store/settings", payload);
     return r.data;
   },
-  async getSummary(days) {
-    const r = await api.get("/analytics/summary", { params: { days } });
+  async getSummary(range) {
+    const r = await api.get("/analytics/summary", { params: buildParams(range) });
     return r.data;
   },
-  async getTopProducts(days) {
-    const r = await api.get("/analytics/top-products", { params: { days } });
+  async getTopProducts(range) {
+    const r = await api.get("/analytics/top-products", { params: buildParams(range) });
     return r.data;
   },
-  async getPayments(days) {
-    const r = await api.get("/analytics/payments", { params: { days } });
+  async getPayments(range) {
+    const r = await api.get("/analytics/payments", { params: buildParams(range) });
     return r.data;
   },
-  async getCategoriesReport(days) {
-    const r = await api.get("/analytics/categories", { params: { days } });
+  async getCategoriesReport(range) {
+    const r = await api.get("/analytics/categories", { params: buildParams(range) });
     return r.data;
   },
-  async getHourly(days) {
-    const r = await api.get("/analytics/hourly", { params: { days } });
+  async getHourly(range) {
+    const r = await api.get("/analytics/hourly", { params: buildParams(range) });
     return r.data;
   },
-  async getSales(days) {
-    const r = await api.get("/analytics/sales", { params: { days } });
+  async getSales(range) {
+    const r = await api.get("/analytics/sales", { params: buildParams(range) });
     return r.data;
   },
   async addCashMovement(payload) {
     const r = await api.post("/cash/movements", payload);
     return r.data;
   },
-  async getCashMovements(days) {
-    const r = await api.get("/cash/movements", { params: { days } });
+  async getCashMovements(range) {
+    const r = await api.get("/cash/movements", { params: buildParams(range) });
     return r.data;
   },
-  async getCashSummary(days) {
-    const r = await api.get("/cash/summary", { params: { days } });
+  async getCashSummary(range) {
+    const r = await api.get("/cash/summary", { params: buildParams(range) });
     return r.data;
   },
-  async getZReport(days) {
-    const r = await api.get("/analytics/zreport", { params: { days } });
+  async getZReport(range) {
+    const r = await api.get("/analytics/zreport", { params: buildParams(range) });
     return r.data;
   },
   async resetFull(password) {

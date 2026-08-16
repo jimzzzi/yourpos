@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator, Image } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { useSettings } from "../context/SettingsContext";
@@ -6,9 +6,10 @@ import { useI18n } from "../i18n/I18nContext";
 import { getPalette } from "../theme";
 import { inventoryApi } from "../api/inventory";
 import { backofficeApi } from "../api/backoffice";
+import { api } from "../api/client";
 import { createOrder } from "../services/orderService";
 import { syncOfflineOrders } from "../services/syncService";
-import { printReceipt } from "../services/printerService";
+import { printReceipt, printKitchenTicket, routeItemsForKitchen } from "../services/printerService";
 import { nextReceiptNumber } from "../services/receiptCounter";
 import VariantPickerModal from "../components/VariantPickerModal";
 import ModifierModal from "../components/ModifierModal";
@@ -101,6 +102,26 @@ function makeStyles(p, cols) {
     paymentConfirmDisabled: { opacity: 0.5 },
     paymentConfirmText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
     noteInput: { borderWidth: 2, borderColor: p.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, backgroundColor: p.input, marginBottom: 20, minHeight: 70, textAlignVertical: "top", color: p.text },
+    voidBadge: { position: "absolute", top: 4, right: 4, backgroundColor: "#DC2626", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+    voidBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+    timerBadge: { position: "absolute", bottom: 4, right: 4, backgroundColor: "#0F172A", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+    timerBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+    qrPanel: { position: "absolute", bottom: 20, right: 20, width: 360, maxHeight: 400, backgroundColor: p.surface, borderRadius: 16, borderWidth: 2, borderColor: "#DC2626", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 10, elevation: 10, overflow: "hidden" },
+    qrPanelHeader: { backgroundColor: "#DC2626", padding: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+    qrPanelTitle: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+    qrPanelBadge: { backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 2 },
+    qrPanelBadgeText: { color: "#DC2626", fontSize: 13, fontWeight: "bold" },
+    qrPanelList: { maxHeight: 300 },
+    qrOrderItem: { padding: 14, borderBottomWidth: 1, borderBottomColor: p.border },
+    qrOrderHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+    qrOrderTable: { fontSize: 15, fontWeight: "bold", color: p.text },
+    qrOrderTime: { fontSize: 12, color: p.muted },
+    qrOrderItems: { fontSize: 13, color: p.muted, marginBottom: 10 },
+    qrOrderActions: { flexDirection: "row", gap: 8 },
+    qrAcceptBtn: { flex: 1, backgroundColor: "#16A34A", borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+    qrRejectBtn: { flex: 1, backgroundColor: p.surface2, borderRadius: 8, paddingVertical: 10, alignItems: "center", borderWidth: 1, borderColor: p.border },
+    qrAcceptText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
+    qrRejectText: { color: p.text, fontWeight: "bold", fontSize: 13 },
   };
 }
 
@@ -148,12 +169,65 @@ export default function POSHomeScreen() {
   const [tablesView, setTablesView] = useState(false);
   const [tables, setTables] = useState([]);
   const [activeTable, setActiveTable] = useState(null);
+  const [originalCartForTable, setOriginalCartForTable] = useState([]);
+  const [voidReasonModal, setVoidReasonModal] = useState(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [qrOrders, setQrOrders] = useState([]);
+  const qrCountRef = useRef(0);
+
+  const playOrderSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+      oscillator.frequency.setValueAtTime(660, audioCtx.currentTime + 0.3);
+      gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.0);
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 1.0);
+      console.log("🔔 Order sound played!");
+    } catch (e) {
+      console.error("Sound error:", e);
+    }
+  };
 
   const taxRate = Number(store?.tax_rate || 0) / 100;
   const vatInclusive = Boolean(store && store.tax_inclusive);
 
+  const orderStartTime = activeTable && activeTable.open_order && activeTable.open_order.created_at
+    ? new Date(activeTable.open_order.created_at).getTime()
+    : null;
+
+  const applyTimeCharges = (items, startTime, nowMs) => {
+    return (items || []).map((item) => {
+      if (!item.is_time_based || !item.time_unit_minutes) return item;
+      const st = startTime || item.time_start;
+      if (!st) return item;
+      const elapsedMinutes = Math.floor((nowMs - st) / 1000 / 60);
+      const units = Math.ceil(elapsedMinutes / item.time_unit_minutes);
+      const timeCharge = units * Number(item.price || 0);
+      return {
+        ...item,
+        original_price: item.price,
+        price: timeCharge / item.quantity,
+        time_elapsed_minutes: elapsedMinutes,
+        time_units: units,
+      };
+    });
+  };
+
+  const displayCart = useMemo(
+    () => applyTimeCharges(cart, orderStartTime, nowTick),
+    [cart, orderStartTime, nowTick]
+  );
+
   const { subtotal, discount, tax, total } = useMemo(() => {
-    const raw = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const raw = displayCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const dv = Number(discountValue || 0);
     const discountAmount = Math.min(raw, discountType === "percent" ? (raw * dv) / 100 : dv);
     const afterDiscount = raw - discountAmount;
@@ -164,7 +238,7 @@ export default function POSHomeScreen() {
     }
     const taxV = afterDiscount * taxRate;
     return { subtotal: afterDiscount, discount: discountAmount, tax: taxV, total: afterDiscount + taxV };
-  }, [cart, taxRate, vatInclusive, discountType, discountValue]);
+  }, [displayCart, taxRate, vatInclusive, discountType, discountValue]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -188,6 +262,8 @@ export default function POSHomeScreen() {
             image_url: product.image_url,
             description: product.description,
             track_stock: Boolean(product.track_stock),
+            is_time_based: Boolean(product.is_time_based),
+            time_unit_minutes: product.time_unit_minutes,
             variants,
             stock_quantity: totalStock,
             price: minPrice,
@@ -213,6 +289,32 @@ export default function POSHomeScreen() {
   useEffect(() => {
     if (settings.tablesEnabled) loadTables();
   }, [settings.tablesEnabled]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const pollQrOrders = async () => {
+      if (!settings.qrOrderingEnabled) return;
+      try {
+        const res = await api.get("/qr/pending");
+        const pending = Array.isArray(res.data) ? res.data : [];
+        console.log("🔍 QR Poll result:", pending.length, "pending orders");
+        if (pending.length > qrCountRef.current && qrCountRef.current >= 0) {
+          playOrderSound();
+        }
+        qrCountRef.current = pending.length;
+        setQrOrders(pending);
+      } catch (e) {
+        console.error("🔍 QR Poll error:", e.message);
+      }
+    };
+    pollQrOrders();
+    const interval = setInterval(pollQrOrders, 5000);
+    return () => clearInterval(interval);
+  }, [settings.qrOrderingEnabled]);
 
   const filteredProducts = products.filter(
     (pp) =>
@@ -246,11 +348,15 @@ export default function POSHomeScreen() {
           id: lineId,
           variant_id: variant.id,
           product_id: product.product_id || product.id,
+          category_id: product.category_id,
           name: displayName,
           description: product.description,
           price: unitPrice,
           quantity: 1,
           modifiers: modsList.map((m) => ({ modifier_id: m.id, name: m.name, price: Number(m.price || 0) })),
+          is_time_based: Boolean(product.is_time_based),
+          time_unit_minutes: product.time_unit_minutes,
+          time_start: product.is_time_based ? Date.now() : null,
         },
       ];
     });
@@ -289,7 +395,33 @@ export default function POSHomeScreen() {
     );
   };
 
-  const voidLine = (id) => setCart((prevCart) => prevCart.filter((item) => item.id !== id));
+  const voidLine = (item) => {
+    if (!activeTable) {
+      setCart((prevCart) => prevCart.filter((i) => i.id !== item.id));
+      return;
+    }
+    setVoidReasonModal(item);
+  };
+
+  const confirmVoidWithReason = async (reason) => {
+    const item = voidReasonModal;
+    if (!item || !activeTable) return;
+    setCart((prevCart) => prevCart.filter((i) => i.id !== item.id));
+    setVoidReasonModal(null);
+    const kpGroups = routeItemsForKitchen([item], settings);
+    for (const g of kpGroups) {
+      await printKitchenTicket({
+        type: "VOID",
+        table: activeTable.name,
+        billNumber: activeTable.open_order?.bill_number,
+        voidedItem: item,
+        voidedBy: user?.name || "Staff",
+        voidReason: reason,
+        settings,
+        printer: g.printer,
+      });
+    }
+  };
 
   const voidTicket = () => {
     if (cart.length === 0) return;
@@ -297,21 +429,44 @@ export default function POSHomeScreen() {
   };
 
   const serializeCart = () =>
-    cart.map((i) => ({ variant_id: i.variant_id, product_id: i.product_id, name: i.name, description: i.description, price: i.price, quantity: i.quantity, modifiers: i.modifiers || [] }));
+    cart.map((i) => ({
+      variant_id: i.variant_id,
+      product_id: i.product_id,
+      category_id: i.category_id,
+      name: i.name,
+      description: i.description,
+      price: i.price,
+      quantity: i.quantity,
+      modifiers: i.modifiers || [],
+      is_time_based: i.is_time_based,
+      time_unit_minutes: i.time_unit_minutes,
+      time_start: i.time_start,
+    }));
 
-  const handleTableTap = (tb) => {
+  const handleTableTap = async (tb) => {
     if (cart.length > 0) {
       Alert.alert(t("currentTicket"), "Park / " + t("void"));
       return;
     }
     if (tb.open_order) {
       const items = tb.open_order.items || [];
-      setCart(items.map((i) => {
-        const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
-        return { ...i, id: String(i.variant_id) + (modsKey ? "_" + modsKey : "") };
-      }));
+      const allProducts = await inventoryApi.getProducts();
+      const loadedCart = items.map((i) => {
+      const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
+      const product = allProducts.find((pp) => pp.id === i.product_id);
+        return {
+          ...i,
+          id: String(i.variant_id) + (modsKey ? "_" + modsKey : ""),
+          name: i.name || i.product_name || product?.name || "Item",
+          is_time_based: product?.is_time_based || false,
+          time_unit_minutes: product?.time_unit_minutes || null,
+        };
+      });
+      setCart(loadedCart);
+      setOriginalCartForTable(loadedCart);
     } else {
       setCart([]);
+      setOriginalCartForTable([]);
     }
     setActiveTable(tb);
     setTablesView(false);
@@ -320,6 +475,7 @@ export default function POSHomeScreen() {
   const detachTable = () => {
     setActiveTable(null);
     setCart([]);
+    setOriginalCartForTable([]);
   };
 
   const parkToTable = async () => {
@@ -329,10 +485,40 @@ export default function POSHomeScreen() {
       return;
     }
     try {
+      const isNewOrder = !activeTable.open_order;
+      const addedItems =
+        originalCartForTable.length === 0
+          ? cart
+          : cart
+              .map((newItem) => {
+                const origItem = originalCartForTable.find((o) => o.id === newItem.id);
+                if (!origItem) return newItem;
+                const diff = newItem.quantity - origItem.quantity;
+                return diff > 0 ? { ...newItem, quantity: diff } : null;
+              })
+              .filter(Boolean);
+
       await backofficeApi.saveTableOrder(activeTable.id, serializeCart());
+
+      if (addedItems.length > 0) {
+        const kpGroups = routeItemsForKitchen(addedItems, settings);
+        for (const g of kpGroups) {
+          await printKitchenTicket({
+            type: isNewOrder ? "NEW" : "ADDITION",
+            table: activeTable.name,
+            billNumber: activeTable.open_order?.bill_number,
+            dining: settings.diningEnabled ? diningOption : null,
+            items: g.items,
+            settings,
+            printer: g.printer,
+          });
+        }
+      }
+
       Alert.alert("✅", t("parkOn") + " " + activeTable.name + " " + t("payLater"));
       setCart([]);
       setActiveTable(null);
+      setOriginalCartForTable([]);
       setTablesView(true);
       loadTables();
     } catch (error) {
@@ -352,7 +538,13 @@ export default function POSHomeScreen() {
     }
     try {
       const data = await inventoryApi.lookupBarcode(cleanCode);
-      const productLike = { id: String(data.product_id), product_id: data.product_id, name: data.product_name, category_id: null, variants: [data.variant] };
+      const productLike = {
+        id: String(data.product_id),
+        product_id: data.product_id,
+        name: data.product_name,
+        category_id: null,
+        variants: [data.variant],
+      };
       proceedToAdd(productLike, data.variant);
     } catch (error) {
       Alert.alert("Not Found", "No product found for barcode: " + cleanCode);
@@ -377,21 +569,95 @@ export default function POSHomeScreen() {
   const splitCard = Math.max(0, total - splitCashNum);
 
   const canConfirmPayment =
-    paymentMethod === "cash" ? tenderedValue >= total : paymentMethod === "card" ? true : splitCashNum > 0 && splitCashNum <= total;
+    paymentMethod === "cash"
+      ? tenderedValue >= total
+      : paymentMethod === "card"
+      ? true
+      : splitCashNum > 0 && splitCashNum <= total;
+
+  const handleQrAccept = async (orderId) => {
+    try {
+      const order = qrOrders.find((o) => o.id === orderId);
+      if (!order) return;
+
+      await api.post(`/qr/order/${orderId}/accept`);
+      setQrOrders((prev) => prev.filter((o) => o.id !== orderId));
+      
+      // Trigger kitchen print
+      const table = tables.find((t) => t.id === order.table_id);
+      if (table && order.items && order.items.length > 0) {
+        const normalizedItems = order.items.map((item) => ({
+          ...item,
+          name: item.name || item.product_name || "Item",
+        }));
+        const kpGroups = routeItemsForKitchen(normalizedItems, settings);
+        for (const g of kpGroups) {
+          await printKitchenTicket({
+            type: "NEW",
+            table: table.name,
+            billNumber: null,
+            dining: "dine_in",
+            items: g.items,
+            settings,
+            printer: g.printer,
+          });
+        }
+      }
+      
+      loadTables();
+    } catch (e) {
+      Alert.alert("Error", "Failed to accept order.");
+    }
+  };
+
+  const handleQrReject = async (orderId) => {
+    try {
+      await api.post(`/qr/order/${orderId}/reject`);
+      setQrOrders((prev) => prev.filter((o) => o.id !== orderId));
+    } catch (e) {
+      Alert.alert("Error", "Failed to reject order.");
+    }
+  };
+
+  const getTableName = (tableId) => {
+    const tb = tables.find((t) => t.id === tableId);
+    return tb ? tb.name : `Table ${tableId}`;
+  };
 
   const handleCheckout = async (payment) => {
     if (processing) return;
     setProcessing(true);
     try {
       const billNumber = await nextReceiptNumber(settings);
+      const finalCart = applyTimeCharges(cart, orderStartTime, Date.now());
+      const finalSubtotal = finalCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const dv = Number(discountValue || 0);
+      const finalDiscount = Math.min(finalSubtotal, discountType === "percent" ? (finalSubtotal * dv) / 100 : dv);
+      const afterDiscount = finalSubtotal - finalDiscount;
+      let finalTax, finalTotal;
+      if (vatInclusive) {
+        finalTotal = afterDiscount;
+        finalTax = finalTotal - finalTotal / (1 + taxRate);
+      } else {
+        finalTax = afterDiscount * taxRate;
+        finalTotal = afterDiscount + finalTax;
+      }
+
       const order = await createOrder({
-        cart, subtotal, tax, total, discount,
+        cart: finalCart,
+        subtotal: finalSubtotal,
+        tax: finalTax,
+        total: finalTotal,
+        discount: finalDiscount,
         dining: settings.diningEnabled ? diningOption : null,
         table: activeTable ? activeTable.name : null,
-        user, store, payment,
+        user,
+        store,
+        payment,
       });
+
       const quantityByVariant = {};
-      cart.forEach((cartItem) => {
+      finalCart.forEach((cartItem) => {
         quantityByVariant[cartItem.variant_id] = (quantityByVariant[cartItem.variant_id] || 0) + cartItem.quantity;
       });
       setProducts((prevProducts) =>
@@ -405,13 +671,20 @@ export default function POSHomeScreen() {
           return { ...product, variants: updatedVariants, stock_quantity: totalStock };
         })
       );
+
       await syncOfflineOrders();
       if (activeTable) {
         await backofficeApi.clearTableOrder(activeTable.id).catch(() => {});
         loadTables();
       }
+
       setCompletedSale({
-        items: cart, subtotal, tax, total, discount, payment,
+        items: finalCart,
+        subtotal: finalSubtotal,
+        tax: finalTax,
+        total: finalTotal,
+        discount: finalDiscount,
+        payment,
         orderId: order.client_order_id,
         dining: settings.diningEnabled ? diningOption : null,
         table: activeTable ? activeTable.name : null,
@@ -491,16 +764,25 @@ export default function POSHomeScreen() {
     }
   };
 
+  const formatTimer = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  };
+
+  const getTimerColor = (seconds) => {
+    if (seconds < 1800) return "#16A34A";
+    if (seconds < 3600) return "#F59E0B";
+    return "#DC2626";
+  };
+
   const renderGridCard = (item) => {
     const noStock = item.track_stock && item.stock_quantity <= 0;
     return (
       <TouchableOpacity key={item.id} style={[styles.productCard, noStock && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
         <View style={styles.productImageBox}>
-          {item.image_url ? (
-            <Image source={{ uri: item.image_url }} style={styles.productImage} resizeMode="cover" />
-          ) : (
-            <Text style={styles.productIcon}>📦</Text>
-          )}
+          {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.productImage} resizeMode="cover" /> : <Text style={styles.productIcon}>📦</Text>}
         </View>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
         <Text style={styles.productDesc} numberOfLines={1}>{item.description || " "}</Text>
@@ -513,11 +795,7 @@ export default function POSHomeScreen() {
   const renderListRow = (item) => (
     <TouchableOpacity key={item.id} style={[styles.listCard, item.track_stock && item.stock_quantity <= 0 && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
       <View style={styles.listIcon}>
-        {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={styles.listImage} resizeMode="cover" />
-        ) : (
-          <Text style={{ fontSize: 22 }}>📦</Text>
-        )}
+        {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.listImage} resizeMode="cover" /> : <Text style={{ fontSize: 22 }}>📦</Text>}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.listName}>{item.name}</Text>
@@ -531,7 +809,7 @@ export default function POSHomeScreen() {
     <View style={styles.container}>
       <HardwareScannerInput
         onBarcode={handleBarcodeScanned}
-        active={!scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible}
+        active={!scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal}
       />
 
       <View style={styles.productsPanel}>
@@ -550,18 +828,11 @@ export default function POSHomeScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catBar}>
-          <TouchableOpacity
-            style={[styles.catChip, selectedCategory == null && styles.catChipActive]}
-            onPress={() => setSelectedCategory(null)}
-          >
+          <TouchableOpacity style={[styles.catChip, selectedCategory == null && styles.catChipActive]} onPress={() => setSelectedCategory(null)}>
             <Text style={[styles.catChipText, selectedCategory == null && styles.catChipTextActive]}>{t("all")}</Text>
           </TouchableOpacity>
           {categories.map((c) => (
-            <TouchableOpacity
-              key={c.id}
-              style={[styles.catChip, selectedCategory === c.id && styles.catChipActive]}
-              onPress={() => setSelectedCategory(c.id)}
-            >
+            <TouchableOpacity key={c.id} style={[styles.catChip, selectedCategory === c.id && styles.catChipActive]} onPress={() => setSelectedCategory(c.id)}>
               <Text style={[styles.catChipText, selectedCategory === c.id && styles.catChipTextActive]}>{c.name}</Text>
             </TouchableOpacity>
           ))}
@@ -572,23 +843,45 @@ export default function POSHomeScreen() {
             {tables.map((tb) => {
               const occupied = Boolean(tb.open_order);
               const tTotal = tb.open_order ? (tb.open_order.items || []).reduce((s, it) => s + Number(it.price || 0) * Number(it.quantity || 0), 0) : 0;
+              const hasVoidedItems = tb.open_order?.voided_items?.length > 0;
+              const timerStart = tb.open_order?.created_at ? new Date(tb.open_order.created_at).getTime() : null;
+              const elapsedSeconds = timerStart ? Math.floor((nowTick - timerStart) / 1000) : 0;
+              const timeBasedCost = tb.open_order
+                ? (tb.open_order.items || []).reduce((sum, item) => {
+                    if (!item.is_time_based || !item.time_unit_minutes) return sum;
+                    const elapsed = Math.floor((nowTick - (item.time_start || timerStart)) / 1000 / 60);
+                    const units = Math.ceil(elapsed / item.time_unit_minutes);
+                    return sum + units * Number(item.price || 0);
+                  }, 0)
+                : 0;
+
               return (
-                <TouchableOpacity
-                  key={tb.id}
-                  style={[styles.productCard, { borderWidth: 2, borderColor: occupied ? p.danger : p.accent }]}
-                  onPress={() => handleTableTap(tb)}
-                >
-                  <View style={styles.productIconContainer}><Text style={styles.productIcon}>{occupied ? "🔴" : "🟢"}</Text></View>
+                <TouchableOpacity key={tb.id} style={[styles.productCard, { borderWidth: 2, borderColor: occupied ? p.danger : p.accent, position: "relative" }]} onPress={() => handleTableTap(tb)}>
+                  {hasVoidedItems ? (
+                    <View style={styles.voidBadge}>
+                      <Text style={styles.voidBadgeText}>VOID</Text>
+                    </View>
+                  ) : null}
+                  {settings.tableTimingEnabled && occupied && timerStart ? (
+                    <View style={[styles.timerBadge, { backgroundColor: getTimerColor(elapsedSeconds) }]}>
+                      <Text style={styles.timerBadgeText}>⏱ {formatTimer(elapsedSeconds)}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.productIconContainer}>
+                    <Text style={styles.productIcon}>{occupied ? "🔴" : "🟢"}</Text>
+                  </View>
                   <Text style={styles.productName} numberOfLines={1}>{tb.name}</Text>
                   <Text style={styles.productDesc}>{" "}</Text>
-                  <Text style={styles.productPrice}>{occupied ? fm(tTotal) : t("free")}</Text>
+                  <Text style={styles.productPrice}>{occupied ? fm(tTotal + timeBasedCost) : t("free")}</Text>
                   <Text style={styles.outOfStockText}>{" "}</Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         ) : loadingProducts ? (
-          <View style={styles.center}><ActivityIndicator size="large" color={p.accent} /></View>
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={p.accent} />
+          </View>
         ) : settings.productLayout === "list" ? (
           <ScrollView contentContainerStyle={styles.listContainer}>{filteredProducts.map(renderListRow)}</ScrollView>
         ) : (
@@ -597,7 +890,7 @@ export default function POSHomeScreen() {
       </View>
 
       <View style={styles.cartPanel}>
-                <View style={styles.cartHeader}>
+        <View style={styles.cartHeader}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text style={styles.cartTitle}>{t("currentTicket")}</Text>
             {activeTable ? (
@@ -606,7 +899,9 @@ export default function POSHomeScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
-          <TouchableOpacity onPress={voidTicket}><Text style={styles.voidAllText}>{t("void")}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={voidTicket}>
+            <Text style={styles.voidAllText}>{t("void")}</Text>
+          </TouchableOpacity>
         </View>
 
         {can("cash") ? (
@@ -627,31 +922,43 @@ export default function POSHomeScreen() {
               <Text style={styles.emptyCartText}>{t("cartEmpty")}</Text>
             </View>
           ) : (
-            cart.map((item) => (
+            displayCart.map((item) => (
               <View key={item.id} style={styles.cartItem}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cartItemName}>{item.name}</Text>
+                  {item.time_elapsed_minutes ? (
+                    <Text style={styles.cartItemMods}>⏱ {formatTimer(item.time_elapsed_minutes * 60)} • {item.time_units} × {item.time_unit_minutes}min</Text>
+                  ) : null}
                   {item.modifiers && item.modifiers.length > 0 ? (
                     <Text style={styles.cartItemMods}>{item.modifiers.map((m) => "+ " + m.name).join(", ")}</Text>
                   ) : null}
                   <Text style={styles.cartItemPrice}>{fm(item.price * item.quantity)}</Text>
                 </View>
                 <View style={styles.quantityControls}>
-                  <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={styles.qtyBtn}><Text style={styles.qtyBtnText}>-</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={styles.qtyBtn}>
+                    <Text style={styles.qtyBtnText}>-</Text>
+                  </TouchableOpacity>
                   <Text style={styles.qtyText}>{item.quantity}</Text>
-                  <TouchableOpacity onPress={() => updateQuantity(item.id, 1)} style={styles.qtyBtn}><Text style={styles.qtyBtnText}>+</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => updateQuantity(item.id, 1)} style={styles.qtyBtn}>
+                    <Text style={styles.qtyBtnText}>+</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => voidLine(item.id)} style={styles.voidButton}><Text style={styles.voidButtonText}>✕</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => voidLine(item)} style={styles.voidButton}>
+                  <Text style={styles.voidButtonText}>✕</Text>
+                </TouchableOpacity>
               </View>
             ))
           )}
         </ScrollView>
 
         <View style={styles.cartFooter}>
-          <View style={styles.totalsRow}><Text style={styles.totalsLabel}>{t("subtotal")}</Text><Text style={styles.totalsValue}>{fm(subtotal)}</Text></View>
+          <View style={styles.totalsRow}>
+            <Text style={styles.totalsLabel}>{t("subtotal")}</Text>
+            <Text style={styles.totalsValue}>{fm(subtotal)}</Text>
+          </View>
           <View style={styles.totalsRow}>
             <Text style={styles.totalsLabel}>{t("discount")}</Text>
-                        {can("discounts") ? (
+            {can("discounts") ? (
               <TouchableOpacity onPress={() => setDiscountModalVisible(true)}>
                 <Text style={styles.discountValue}>{"-" + fm(discount) + " ✏️"}</Text>
               </TouchableOpacity>
@@ -659,8 +966,14 @@ export default function POSHomeScreen() {
               <Text style={styles.discountValue}>{"-" + fm(discount)}</Text>
             )}
           </View>
-          <View style={styles.totalsRow}><Text style={styles.totalsLabel}>{vatInclusive ? t("vatIncl") : t("vatExcl")}</Text><Text style={styles.totalsValue}>{fm(tax)}</Text></View>
-          <View style={[styles.totalsRow, styles.totalRow]}><Text style={styles.bold}>{t("total")}</Text><Text style={styles.bold}>{fm(total)}</Text></View>
+          <View style={styles.totalsRow}>
+            <Text style={styles.totalsLabel}>{vatInclusive ? t("vatIncl") : t("vatExcl")}</Text>
+            <Text style={styles.totalsValue}>{fm(tax)}</Text>
+          </View>
+          <View style={[styles.totalsRow, styles.totalRow]}>
+            <Text style={styles.bold}>{t("total")}</Text>
+            <Text style={styles.bold}>{fm(total)}</Text>
+          </View>
           {activeTable ? (
             <TouchableOpacity style={[styles.payButton, { backgroundColor: "#64748B", marginBottom: 10 }]} onPress={parkToTable}>
               <Text style={styles.payButtonText}>🪑 {t("parkOn")} {activeTable.name} {t("payLater")}</Text>
@@ -671,6 +984,41 @@ export default function POSHomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* QR ORDERS PANEL */}
+      {qrOrders.length > 0 && (
+        <View style={styles.qrPanel}>
+          <View style={styles.qrPanelHeader}>
+            <Text style={styles.qrPanelTitle}>📲 QR Orders</Text>
+            <View style={styles.qrPanelBadge}>
+              <Text style={styles.qrPanelBadgeText}>{qrOrders.length}</Text>
+            </View>
+          </View>
+          <ScrollView style={styles.qrPanelList}>
+            {qrOrders.map((order) => (
+              <View key={order.id} style={styles.qrOrderItem}>
+                <View style={styles.qrOrderHeader}>
+                  <Text style={styles.qrOrderTable}>🪑 {getTableName(order.table_id)}</Text>
+                  <Text style={styles.qrOrderTime}>
+                    {new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </Text>
+                </View>
+                <Text style={styles.qrOrderItems}>
+                  {order.items.length} item{order.items.length !== 1 ? "s" : ""}: {order.items.map((i) => i.name || i.product_name || "Item").join(", ")}
+                </Text>
+                <View style={styles.qrOrderActions}>
+                  <TouchableOpacity style={styles.qrAcceptBtn} onPress={() => handleQrAccept(order.id)}>
+                    <Text style={styles.qrAcceptText}>✅ Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.qrRejectBtn} onPress={() => handleQrReject(order.id)}>
+                    <Text style={styles.qrRejectText}>❌ Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       <VariantPickerModal
         product={variantPickerProduct}
@@ -797,9 +1145,7 @@ export default function POSHomeScreen() {
       <Modal visible={Boolean(cashModal)} transparent animationType="fade" onRequestClose={() => setCashModal(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
-            <Text style={styles.paymentTitle}>
-              {cashModal === "cash_in" ? "💵 " + t("cashIn") : "💸 " + t("cashOut")}
-            </Text>
+            <Text style={styles.paymentTitle}>{cashModal === "cash_in" ? "💵 " + t("cashIn") : "💸 " + t("cashOut")}</Text>
             <Text style={styles.paymentLabel}>{t("amountLabel")}</Text>
             <TextInput style={styles.paymentInput} value={cashAmount} onChangeText={setCashAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={p.muted} />
             <Text style={styles.paymentLabel}>{t("note")}</Text>
@@ -817,6 +1163,31 @@ export default function POSHomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={styles.paymentConfirmButton} onPress={confirmCashMovement} disabled={savingCash}>
                 <Text style={styles.paymentConfirmText}>{savingCash ? t("processing") : t("save")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(voidReasonModal)} transparent animationType="fade" onRequestClose={() => setVoidReasonModal(null)}>
+        <View style={styles.paymentOverlay}>
+          <View style={styles.paymentCard}>
+            <Text style={styles.paymentTitle}>{t("voidReason") || "Void Reason"}</Text>
+            <Text style={styles.paymentLabel}>{t("reason") || "Why is this item being voided?"}</Text>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="e.g. Customer changed mind, wrong item, etc."
+              placeholderTextColor={p.muted}
+              multiline
+              autoFocus
+              onChangeText={(text) => setVoidReasonModal({ ...voidReasonModal, _reason: text })}
+            />
+            <View style={styles.paymentButtonRow}>
+              <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setVoidReasonModal(null)}>
+                <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.paymentConfirmButton} onPress={() => confirmVoidWithReason(voidReasonModal._reason || "")}>
+                <Text style={styles.paymentConfirmText}>{t("confirmVoid") || "Void & Print"}</Text>
               </TouchableOpacity>
             </View>
           </View>
