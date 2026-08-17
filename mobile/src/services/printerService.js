@@ -1,3 +1,5 @@
+import { api } from "../api/client";
+
 function centerText(text, width) {
   const t = String(text || "");
   if (t.length >= width) return t.slice(0, width);
@@ -176,8 +178,7 @@ export function buildReceiptHtml(args) {
   );
 }
 
-
-// ========== KITCHEN TICKET ENGINE (BLACK & BOLD) ==========
+// ========== KITCHEN TICKET HTML ==========
 export function buildKitchenTicketHtml(args) {
   const a = args || {};
   const type = String(a.type || "NEW").toUpperCase();
@@ -240,6 +241,56 @@ export function buildKitchenTicketHtml(args) {
   html += '<div class="footer">' + escapeHtml(now) + "</div>";
   html += "</body></html>";
   return html;
+}
+
+// ========== NEW: KITCHEN TICKET PLAIN TEXT (For Cloud Agent) ==========
+export function buildKitchenTicketText(args) {
+  const a = args || {};
+  const type = String(a.type || "NEW").toUpperCase();
+  const items = a.items || [];
+  const table = a.table || "-";
+  const billNumber = a.billNumber ? String(a.billNumber).padStart(6, "0") : null;
+  const width = 32; // Standard 80mm width
+
+  let lines = [];
+  
+  if (type === "VOID") {
+    lines.push(centerText("### VOID ###", width));
+    lines.push(centerText(table, width));
+    if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
+    lines.push(divider(width, "="));
+    if (a.voidedItem) {
+      lines.push("1x " + a.voidedItem.name);
+      if (a.voidedItem.modifiers) {
+        a.voidedItem.modifiers.forEach(m => lines.push("  + " + m.name));
+      }
+    }
+    if (a.voidReason) lines.push("Reason: " + a.voidReason);
+    if (a.voidedBy) lines.push("By: " + a.voidedBy);
+  } else {
+    let header = "*** NEW ORDER ***";
+    if (type === "ADDITION") header = "*** ADDITION ***";
+    lines.push(centerText(header, width));
+    lines.push("");
+    lines.push(centerText(table, width));
+    if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
+    if (a.dining) lines.push(centerText(a.dining === "takeaway" ? "TAKEAWAY" : "DINE-IN", width));
+    lines.push(divider(width, "="));
+    
+    items.forEach(item => {
+      lines.push((item.quantity || 1) + "x " + item.name);
+      if (item.description) lines.push("   " + item.description);
+      if (item.modifiers) {
+        item.modifiers.forEach(m => lines.push("   * " + m.name));
+      }
+      if (item.notes) lines.push("   NOTE: " + item.notes);
+    });
+  }
+  
+  lines.push(divider(width, "="));
+  lines.push(centerText(new Date().toLocaleTimeString(), width));
+  
+  return lines.join("\n");
 }
 
 export function getKitchenPrinters(settings) {
@@ -306,6 +357,23 @@ async function sendToNetworkPrinter(address, port, textBody) {
   });
 }
 
+// ========== NEW: CLOUD AGENT SENDER ==========
+async function sendToCloudAgent(printerName, textContent) {
+  try {
+    await api.post("/print/jobs", {
+      printer_name: printerName || "default",
+      content: textContent,
+    });
+    return { success: true, method: "cloud" };
+  } catch (error) {
+    console.error("[CLOUD PRINT] Failed:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Set to true to use Cloud Print Agent, false to use old browser printing
+const USE_CLOUD_PRINT = true; 
+
 export async function printReceipt(args) {
   try {
     const settings = (args && args.settings) || {};
@@ -314,6 +382,14 @@ export async function printReceipt(args) {
 
     if (!printer.enabled && !isTest) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
+    }
+
+    // TRY CLOUD AGENT FIRST
+    if (USE_CLOUD_PRINT) {
+      const text = buildReceiptText(args);
+      const cloudRes = await sendToCloudAgent(settings.cloudPrinterName || "default", text);
+      if (cloudRes.success) return cloudRes;
+      console.warn("[PRINT] Cloud agent failed, falling back to browser.");
     }
 
     const html = buildReceiptHtml(args);
@@ -348,6 +424,14 @@ export async function printKitchenTicket(args) {
       return { success: false, error: "Kitchen printer disabled." };
     }
 
+    // TRY CLOUD AGENT FIRST
+    if (USE_CLOUD_PRINT) {
+      const text = buildKitchenTicketText(args);
+      const cloudRes = await sendToCloudAgent(settings.cloudPrinterName || "default", text);
+      if (cloudRes.success) return cloudRes;
+      console.warn("[KP] Cloud agent failed, falling back to browser.");
+    }
+
     const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
 
     if (kp.connection === "network" && kp.address) {
@@ -366,8 +450,8 @@ export async function printKitchenTicket(args) {
     console.error("[KP] error:", error);
     return { success: false, error: error.message };
   }
-  
 }
+
 // ========== QR ORDERING STICKER PRINTER ==========
 function qrStyleHtml() {
   return (
