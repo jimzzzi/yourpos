@@ -6,6 +6,7 @@ import { useI18n } from "../i18n/I18nContext";
 import { backofficeApi } from "../api/backoffice";
 import { printReceipt } from "../services/printerService";
 import { telegramApi } from "../api/telegram";
+import CloudPrintSettings from "../components/CloudPrintSettings";
 
 function BusinessHoursCard() {
   const ctx = useSettings();
@@ -549,6 +550,10 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>{t("kitchfenPrinter") || "Kitchen Printer"}</Text>
         <KitchenPrinterCard />
 
+        {/* ☁️ CLOUD PRINT ADDED HERE */}
+        <Text style={styles.sectionTitle}>☁️ Cloud Print (Agent)</Text>
+        <CloudPrintSettings />
+
         <Text style={styles.sectionTitle}>{t("printer")}</Text>
         <View style={styles.card}>
           <View style={styles.optionRow}>
@@ -629,7 +634,7 @@ export default function SettingsScreen() {
           <Text style={styles.cardLabel}>{t("paperSize")}</Text>
           <View style={styles.optionRow}>
             <TouchableOpacity style={[styles.optionButton, rc.paperSize !== "58" && styles.optionButtonActive]} onPress={() => saveReceipt({ paperSize: "80" })}>
-              <Text style={[styles.optionText, rc.paperSize !== "58" && styles.optionTextActive]}>80mm</Text>
+              <Text style={[styles.optionText, rc.paperSize !== "58" && styles.optionButtonActive]}>80mm</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.optionButton, rc.paperSize === "58" && styles.optionButtonActive]} onPress={() => saveReceipt({ paperSize: "58" })}>
               <Text style={[styles.optionText, rc.paperSize === "58" && styles.optionTextActive]}>58mm</Text>

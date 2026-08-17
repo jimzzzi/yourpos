@@ -25,10 +25,12 @@ router.post("/jobs", async (req, res) => {
 // GET /api/print/jobs/pending — Agent polls for jobs to print
 router.get("/jobs/pending", async (req, res) => {
   try {
-    const result = await db.query(
-      "SELECT id, printer_name, content, created_at FROM print_jobs WHERE store_id = $1 AND status = 'pending' AND attempts < 3 ORDER BY created_at ASC LIMIT 5",
-      [req.user.storeId]
-    );
+    const agent = req.query.agent || null;
+    const params = [req.user.storeId];
+    let sql = "SELECT id, printer_name, content, created_at FROM print_jobs WHERE store_id = $1 AND status = 'pending' AND attempts < 3";
+    if (agent) { params.push(agent); sql += " AND printer_name = $" + params.length; }
+    sql += " ORDER BY created_at ASC LIMIT 5";
+    const result = await db.query(sql, params);
     res.json(result.rows);
   } catch (e) {
     console.error("Print jobs poll error:", e);
