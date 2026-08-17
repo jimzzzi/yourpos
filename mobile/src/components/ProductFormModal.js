@@ -4,6 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Image,
 } from "react-native";
 import { inventoryApi } from "../api/inventory";
+import { api } from "../api/client"; // Make sure api is imported
 import { useI18n } from "../i18n/I18nContext";
 
 const emptyVariant = { id: null, name: "", price: "", stock_quantity: "", sku: "", barcode: "" };
@@ -22,6 +23,9 @@ export default function ProductFormModal({ visible, product, categories, onClose
   const [newCategoryName, setNewCategoryName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  
+  // NEW: Track upload state
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -70,6 +74,7 @@ export default function ProductFormModal({ visible, product, categories, onClose
     });
   };
 
+  // NEW: Cloudinary Upload Logic (Replaces Base64 Canvas)
   const handleUpload = () => {
     if (Platform.OS !== "web") {
       Alert.alert(t("upload"), t("imageUrl"));
@@ -78,24 +83,26 @@ export default function ProductFormModal({ visible, product, categories, onClose
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const img = new window.Image();
-        img.onload = () => {
-          const max = 256;
-          const scale = Math.min(1, max / Math.max(img.width, img.height));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
-          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-          setImageUrl(canvas.toDataURL("image/jpeg", 0.75));
-        };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
+      
+      try {
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("image", file); // Web standard File object
+        
+        const response = await api.post("/upload/image", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        
+        // Save the Cloudinary URL!
+        setImageUrl(response.data.url);
+      } catch (err) {
+        Alert.alert("❌ Upload Failed", err.response?.data?.error || err.message || "Could not upload image.");
+      } finally {
+        setUploading(false);
+      }
     };
     input.click();
   };
@@ -182,7 +189,7 @@ export default function ProductFormModal({ visible, product, categories, onClose
     const payload = {
       name: name.trim(),
       category_id: categoryId,
-      image_url: imageUrl.trim(),
+      image_url: imageUrl.trim(), // This is now a short Cloudinary URL!
       description: description.trim(),
       track_stock: trackStock,
 	  is_time_based: isTimeBased,
@@ -302,8 +309,15 @@ export default function ProductFormModal({ visible, product, categories, onClose
 
             <Text style={styles.label}>{t("itemPhoto")}</Text>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity style={[styles.uploadButton, { flex: 1 }]} onPress={handleUpload}>
-                <Text style={styles.uploadButtonText}>{t("upload")}</Text>
+              {/* NEW: Upload button handles loading state */}
+              <TouchableOpacity 
+                style={[styles.uploadButton, { flex: 1, opacity: uploading ? 0.6 : 1 }]} 
+                onPress={handleUpload} 
+                disabled={uploading}
+              >
+                <Text style={styles.uploadButtonText}>
+                  {uploading ? "Uploading..." : t("upload")}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.uploadButton, { flex: 1, backgroundColor: "#2563eb" }]} onPress={handleAutoImage}>
                 <Text style={styles.uploadButtonText}>{t("autoPhoto")}</Text>

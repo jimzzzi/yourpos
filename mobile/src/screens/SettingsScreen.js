@@ -364,37 +364,41 @@ export default function SettingsScreen() {
     saveReceipt({ footerLines: next });
   };
 
-  const pickLogo = (which) => {
-    if (Platform.OS !== "web") {
-      Alert.alert(t("upload"), "Web only.");
-      return;
+  import { uploadImage } from "../services/uploadService";
+
+const pickLogo = async (which) => {
+  if (Platform.OS !== "web") {
+    Alert.alert(t("upload"), "Web only.");
+    return;
+  }
+  
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    
+    try {
+      Alert.alert("⏳", "Uploading image...");
+      
+      // Upload to Cloudinary instead of Base64
+      const result = await uploadImage(file);
+      
+      // Save only the URL in settings (tiny string!)
+      if (which === "header") {
+        saveReceipt({ headerLogo: result.url });
+      } else {
+        saveReceipt({ footerLogo: result.url });
+      }
+      
+      Alert.alert("✅", "Image uploaded successfully!");
+    } catch (error) {
+      Alert.alert("❌", error.message);
     }
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = (e) => {
-      const file = e.target.files && e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const img = new window.Image();
-        img.onload = () => {
-          const max = 300;
-          const scale = Math.min(1, max / Math.max(img.width, img.height));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.round(img.width * scale);
-          canvas.height = Math.round(img.height * scale);
-          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-          const data = canvas.toDataURL("image/png");
-          if (which === "header") saveReceipt({ headerLogo: data });
-          else saveReceipt({ footerLogo: data });
-        };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    };
-    input.click();
   };
+  input.click();
+};
 
   const saveVat = async (inclusive) => {
     try {

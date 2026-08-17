@@ -17,6 +17,9 @@ const adminRoutes = require("./routes/admin");
 const tablesRoutes = require("./routes/tables");
 const qrRoutes = require("./routes/qr");
 const printRoutes = require("./routes/print");
+const uploadRoutes = require("./routes/upload");
+// ...
+
 
 
 const app = express();
@@ -84,6 +87,7 @@ app.use("/api/reports", require("./routes/reports"));
 app.use("/api/telegram", require("./routes/telegram"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/print", printRoutes);
+app.use("/api/upload", uploadRoutes);
 
 
 app.use((req, res) => {
