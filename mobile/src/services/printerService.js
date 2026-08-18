@@ -372,7 +372,7 @@ async function sendToCloudAgent(printerName, textContent) {
 }
 
 // Set to true to use Cloud Print Agent, false to use old browser printing
-const USE_CLOUD_PRINT = true; 
+const USE_CLOUD_PRINT = false; 
 
 export async function printReceipt(args) {
   try {
