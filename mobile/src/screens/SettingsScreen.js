@@ -7,6 +7,7 @@ import { backofficeApi } from "../api/backoffice";
 import { printReceipt } from "../services/printerService";
 import { telegramApi } from "../api/telegram";
 import CloudPrintSettings from "../components/CloudPrintSettings";
+import { uploadImage } from "../services/uploadService";
 
 function BusinessHoursCard() {
   const ctx = useSettings();
@@ -364,14 +365,11 @@ export default function SettingsScreen() {
     saveReceipt({ footerLines: next });
   };
 
-  import { uploadImage } from "../services/uploadService";
-
 const pickLogo = async (which) => {
   if (Platform.OS !== "web") {
     Alert.alert(t("upload"), "Web only.");
     return;
   }
-  
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "image/*";
@@ -381,18 +379,10 @@ const pickLogo = async (which) => {
     
     try {
       Alert.alert("⏳", "Uploading image...");
-      
-      // Upload to Cloudinary instead of Base64
       const result = await uploadImage(file);
-      
-      // Save only the URL in settings (tiny string!)
-      if (which === "header") {
-        saveReceipt({ headerLogo: result.url });
-      } else {
-        saveReceipt({ footerLogo: result.url });
-      }
-      
-      Alert.alert("✅", "Image uploaded successfully!");
+      if (which === "header") saveReceipt({ headerLogo: result.url });
+      else saveReceipt({ footerLogo: result.url });
+      Alert.alert("✅", "Image uploaded!");
     } catch (error) {
       Alert.alert("❌", error.message);
     }
