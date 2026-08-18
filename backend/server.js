@@ -18,6 +18,10 @@ const tablesRoutes = require("./routes/tables");
 const qrRoutes = require("./routes/qr");
 const printRoutes = require("./routes/print");
 const uploadRoutes = require("./routes/upload");
+const printerRoutes = require("./routes/printer");
+const superAdminRoutes = require("./routes/superAdmin");
+
+
 // ...
 
 
@@ -87,7 +91,10 @@ app.use("/api/reports", require("./routes/reports"));
 app.use("/api/telegram", require("./routes/telegram"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/print", printRoutes);
+app.use("/api/printer", printerRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/super-admin", superAdminRoutes);
+
 
 
 app.use((req, res) => {

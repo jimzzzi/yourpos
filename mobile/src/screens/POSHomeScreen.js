@@ -28,7 +28,7 @@ function makeStyles(p, cols) {
     scanButton: { backgroundColor: "#0F172A", borderRadius: 8, paddingHorizontal: 20, justifyContent: "center", borderWidth: 1, borderColor: p.border },
     scanButtonText: { color: "#fff", fontWeight: "bold" },
     tablesButton: { paddingHorizontal: 28, paddingVertical: 12 },
-    catBar: { backgroundColor: p.surface, borderBottomWidth: 1, borderBottomColor: p.border, paddingVertical: 10, paddingHorizontal: 10, flexGrow: 0 },
+    catBar: { backgroundColor: p.surface, borderBottomWidth: 1, borderBottomColor: p.border, paddingVertical: 10, paddingHorizontal: 10, flexGrow: 0, flexShrink: 0, height: 52 },
     catChip: { borderWidth: 1, borderColor: p.border, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, backgroundColor: p.surface2 },
     catChipActive: { backgroundColor: p.accent, borderColor: p.accent },
     catChipText: { color: p.muted, fontWeight: "600" },
@@ -782,7 +782,7 @@ export default function POSHomeScreen() {
     return (
       <TouchableOpacity key={item.id} style={[styles.productCard, noStock && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
         <View style={styles.productImageBox}>
-          {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.productImage} resizeMode="cover" /> : <Text style={styles.productIcon}>📦</Text>}
+          {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.productImage} resizeMode="cover" /> : <Text style={styles.productIcon}>🍽️</Text>}
         </View>
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
         <Text style={styles.productDesc} numberOfLines={1}>{item.description || " "}</Text>
@@ -795,7 +795,7 @@ export default function POSHomeScreen() {
   const renderListRow = (item) => (
     <TouchableOpacity key={item.id} style={[styles.listCard, item.track_stock && item.stock_quantity <= 0 && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
       <View style={styles.listIcon}>
-        {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.listImage} resizeMode="cover" /> : <Text style={{ fontSize: 22 }}>📦</Text>}
+        {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.listImage} resizeMode="cover" /> : <Text style={{ fontSize: 22 }}>🍽️</Text>}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.listName}>{item.name}</Text>
@@ -827,7 +827,7 @@ export default function POSHomeScreen() {
           ) : null}
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catBar} contentContainerStyle={{ alignItems: "center" }}>
           <TouchableOpacity style={[styles.catChip, selectedCategory == null && styles.catChipActive]} onPress={() => setSelectedCategory(null)}>
             <Text style={[styles.catChipText, selectedCategory == null && styles.catChipTextActive]}>{t("all")}</Text>
           </TouchableOpacity>
