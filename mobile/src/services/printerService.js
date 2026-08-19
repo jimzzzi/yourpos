@@ -460,8 +460,9 @@ function buildDrawerHtml(pin) {
   return (
     "<html><head><style>" +
     "@page { size: 80mm auto; margin: 0; }" +
-    "html, body { margin: 0; padding: 0; }" +
+    "html, body { margin: 0; padding: 0; background: #fff; }" +
     "body { font-family: 'Courier New', monospace; }" +
+    "pre { color: #fff; background: #fff; font-size: 1px; line-height: 1px; height: 1px; overflow: hidden; margin: 0; padding: 0; }" +
     "</style></head><body>" +
     "<pre>" + cmd + "</pre>" +
     "<script>window.onload=function(){setTimeout(function(){window.print();window.close();},100);}</script>" +
