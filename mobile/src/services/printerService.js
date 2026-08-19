@@ -178,7 +178,6 @@ export function buildReceiptHtml(args) {
   );
 }
 
-// ========== KITCHEN TICKET HTML ==========
 export function buildKitchenTicketHtml(args) {
   const a = args || {};
   const type = String(a.type || "NEW").toUpperCase();
@@ -243,17 +242,16 @@ export function buildKitchenTicketHtml(args) {
   return html;
 }
 
-// ========== NEW: KITCHEN TICKET PLAIN TEXT (For Cloud Agent) ==========
 export function buildKitchenTicketText(args) {
   const a = args || {};
   const type = String(a.type || "NEW").toUpperCase();
   const items = a.items || [];
   const table = a.table || "-";
   const billNumber = a.billNumber ? String(a.billNumber).padStart(6, "0") : null;
-  const width = 32; // Standard 80mm width
+  const width = 32;
 
   let lines = [];
-  
+
   if (type === "VOID") {
     lines.push(centerText("### VOID ###", width));
     lines.push(centerText(table, width));
@@ -276,7 +274,7 @@ export function buildKitchenTicketText(args) {
     if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
     if (a.dining) lines.push(centerText(a.dining === "takeaway" ? "TAKEAWAY" : "DINE-IN", width));
     lines.push(divider(width, "="));
-    
+
     items.forEach(item => {
       lines.push((item.quantity || 1) + "x " + item.name);
       if (item.description) lines.push("   " + item.description);
@@ -286,10 +284,10 @@ export function buildKitchenTicketText(args) {
       if (item.notes) lines.push("   NOTE: " + item.notes);
     });
   }
-  
+
   lines.push(divider(width, "="));
   lines.push(centerText(new Date().toLocaleTimeString(), width));
-  
+
   return lines.join("\n");
 }
 
@@ -357,7 +355,6 @@ async function sendToNetworkPrinter(address, port, textBody) {
   });
 }
 
-// ========== NEW: CLOUD AGENT SENDER ==========
 async function sendToCloudAgent(printerName, textContent) {
   try {
     await api.post("/print/jobs", {
@@ -371,8 +368,7 @@ async function sendToCloudAgent(printerName, textContent) {
   }
 }
 
-// Set to true to use Cloud Print Agent, false to use old browser printing
-const USE_CLOUD_PRINT = false; 
+const USE_CLOUD_PRINT = false;
 
 export async function printReceipt(args) {
   try {
@@ -384,7 +380,6 @@ export async function printReceipt(args) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
     }
 
-    // TRY CLOUD AGENT FIRST
     if (USE_CLOUD_PRINT) {
       const text = buildReceiptText(args);
       const cloudRes = await sendToCloudAgent(settings.cloudPrinterName || "default", text);
@@ -424,7 +419,6 @@ export async function printKitchenTicket(args) {
       return { success: false, error: "Kitchen printer disabled." };
     }
 
-    // TRY CLOUD AGENT FIRST
     if (USE_CLOUD_PRINT) {
       const text = buildKitchenTicketText(args);
       const cloudRes = await sendToCloudAgent(settings.cloudPrinterName || "default", text);
@@ -448,6 +442,76 @@ export async function printKitchenTicket(args) {
     return printViaBrowser(html);
   } catch (error) {
     console.error("[KP] error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ========== CASH DRAWER KICK ==========
+// ESC/POS standard command: ESC p m t1 t2
+// m=0 is pin 2 (most common), m=1 is pin 5
+// t1=25ms pulse on (0x19), t2=250ms pulse off (0xFA)
+function buildDrawerKickCommand(pin) {
+  const m = pin === 5 ? 1 : 0;
+  return "\x1B\x70" + String.fromCharCode(m) + "\x19\xFA";
+}
+
+function buildDrawerHtml(pin) {
+  const cmd = buildDrawerKickCommand(pin);
+  return (
+    "<html><head><style>" +
+    "@page { size: 80mm auto; margin: 0; }" +
+    "html, body { margin: 0; padding: 0; }" +
+    "body { font-family: 'Courier New', monospace; }" +
+    "</style></head><body>" +
+    "<pre>" + cmd + "</pre>" +
+    "<script>window.onload=function(){setTimeout(function(){window.print();window.close();},100);}</script>" +
+    "</body></html>"
+  );
+}
+
+export async function openCashDrawer(settings) {
+  try {
+    const s = settings || {};
+    const cd = s.cashDrawer || {};
+
+    if (cd.enabled === false) {
+      return { success: false, error: "Cash drawer is disabled." };
+    }
+
+    const pin = cd.pin || 2;
+
+    // Try Cloud Agent first
+    if (USE_CLOUD_PRINT) {
+      try {
+        const cmd = buildDrawerKickCommand(pin);
+        await api.post("/print/jobs", {
+          printer_name: cd.printerName || s.cloudPrinterName || "default",
+          content: cmd,
+          type: "raw",
+        });
+        return { success: true, method: "cloud" };
+      } catch (e) {
+        console.warn("[DRAWER] Cloud failed, fallback:", e);
+      }
+    }
+
+    // Try network printer (main receipt printer)
+    const printer = s.printer || {};
+    if (printer.connection === "network" && printer.address) {
+      try {
+        await sendToNetworkPrinter(printer.address, printer.port, buildDrawerKickCommand(pin));
+        return { success: true, method: "network" };
+      } catch (e) {
+        console.warn("[DRAWER] Network failed, fallback to browser:", e);
+      }
+    }
+
+    // Fallback: browser print
+    const html = buildDrawerHtml(pin);
+    const result = printViaBrowser(html);
+    return result;
+  } catch (error) {
+    console.error("[DRAWER] error:", error);
     return { success: false, error: error.message };
   }
 }

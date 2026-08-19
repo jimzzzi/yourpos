@@ -52,37 +52,40 @@ function makeStyles(p, cols) {
     listName: { fontSize: 16, fontWeight: "600", color: p.text },
     listMeta: { fontSize: 13, color: p.muted, marginTop: 2 },
     listPrice: { fontSize: 16, fontWeight: "bold", color: p.accent },
-    cartHeader: { padding: 15, borderBottomWidth: 1, borderBottomColor: p.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    cartTitle: { fontSize: 18, fontWeight: "bold", color: p.text },
-    voidAllText: { color: p.dangerText, fontWeight: "bold", fontSize: 15 },
-    cashRow: { flexDirection: "row", gap: 10, padding: 12, borderBottomWidth: 1, borderBottomColor: p.border },
-    cashInButton: { flex: 1, backgroundColor: p.successBg, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
-    cashInText: { color: p.successText, fontWeight: "bold" },
-    cashOutButton: { flex: 1, backgroundColor: p.dangerBg, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
-    cashOutText: { color: p.dangerText, fontWeight: "bold" },
+    cartHeader: { padding: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: p.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: p.surface, gap: 8, flexWrap: "wrap" },
+    cartHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1, flexWrap: "wrap" },
+    cartTitle: { fontSize: 17, fontWeight: "bold", color: p.text },
+    cartHeaderRight: { flexDirection: "row", alignItems: "center", gap: 6 },
+    cashBtnRow: { flexDirection: "row", gap: 6, alignItems: "center" },
+    cashInButton: { backgroundColor: p.successBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: "#86EFAC" },
+    cashOutButton: { backgroundColor: p.dangerBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: "#FCA5A5" },
+    cashInText: { color: p.successText, fontWeight: "bold", fontSize: 13 },
+    cashOutText: { color: p.dangerText, fontWeight: "bold", fontSize: 13 },
+    voidAllText: { color: p.dangerText, fontWeight: "bold", fontSize: 14, paddingHorizontal: 8 },
     cartList: { flex: 1, padding: 15 },
     emptyCart: { alignItems: "center", marginTop: 40 },
     emptyCartIcon: { fontSize: 48, marginBottom: 10, opacity: 0.3 },
     emptyCartText: { color: p.muted, fontSize: 16 },
-    cartItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: p.border },
-    cartItemName: { fontSize: 15, fontWeight: "600", color: p.text },
-    cartItemMods: { fontSize: 12, color: p.accent, marginTop: 2 },
-    cartItemPrice: { color: p.muted, marginTop: 4 },
-    quantityControls: { flexDirection: "row", alignItems: "center", gap: 10 },
-    qtyBtn: { backgroundColor: p.surface2, width: 30, height: 30, borderRadius: 15, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: p.border },
-    qtyBtnText: { fontSize: 18, fontWeight: "bold", color: p.text },
-    qtyText: { fontSize: 16, fontWeight: "bold", minWidth: 20, textAlign: "center", color: p.text },
-    voidButton: { marginLeft: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: p.dangerBg, justifyContent: "center", alignItems: "center" },
-    voidButtonText: { color: p.dangerText, fontWeight: "bold", fontSize: 14 },
+    cartItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: p.border, gap: 8 },
+    cartItemLeft: { flex: 1, minWidth: 0 },
+    cartItemName: { fontSize: 16, fontWeight: "700", color: p.text, marginBottom: 3 },
+    cartItemMods: { fontSize: 13, color: p.accent, marginTop: 3, fontWeight: "500" },
+    cartItemPrice: { color: p.muted, marginTop: 4, fontSize: 14, fontWeight: "600" },
+    quantityControls: { flexDirection: "row", alignItems: "center", gap: 8 },
+    qtyBtn: { backgroundColor: p.surface2, width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: p.border },
+    qtyBtnText: { fontSize: 20, fontWeight: "bold", color: p.text },
+    qtyText: { fontSize: 18, fontWeight: "bold", minWidth: 26, textAlign: "center", color: p.text },
+    voidButton: { marginLeft: 4, width: 36, height: 36, borderRadius: 18, backgroundColor: p.dangerBg, justifyContent: "center", alignItems: "center" },
+    voidButtonText: { color: p.dangerText, fontWeight: "bold", fontSize: 16 },
     cartFooter: { padding: 15, borderTopWidth: 1, borderTopColor: p.border, backgroundColor: p.surface },
     totalsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
     totalsLabel: { color: p.muted, fontSize: 15 },
     totalsValue: { color: p.text, fontSize: 15, fontWeight: "500" },
     discountValue: { color: p.dangerText, fontWeight: "bold" },
-    totalRow: { marginTop: 10, marginBottom: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: p.border },
-    bold: { fontWeight: "bold", fontSize: 20, color: p.text },
-    payButton: { backgroundColor: p.accent, padding: 18, borderRadius: 12, alignItems: "center" },
-    payButtonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+    totalRow: { marginTop: 10, marginBottom: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: p.border },
+    bold: { fontWeight: "bold", fontSize: 22, color: p.text },
+    payButton: { backgroundColor: p.accent, padding: 13, borderRadius: 10, alignItems: "center", marginBottom: 8 },
+    payButtonText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
     paymentOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 20 },
     paymentCard: { width: "100%", maxWidth: 420, backgroundColor: p.surface, borderRadius: 16, padding: 24 },
     paymentTitle: { fontSize: 24, fontWeight: "bold", color: p.text, marginBottom: 10 },
@@ -106,6 +109,14 @@ function makeStyles(p, cols) {
     voidBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
     timerBadge: { position: "absolute", bottom: 4, right: 4, backgroundColor: "#0F172A", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
     timerBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+    // ========== PRE-PRINT BUTTON ON BUSY TABLES ==========
+    preprintBtn: { position: "absolute", top: 6, left: 6, backgroundColor: "#0EA5E9", borderRadius: 8, width: 34, height: 34, justifyContent: "center", alignItems: "center", zIndex: 10, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
+    preprintBtnText: { fontSize: 16 },
+    // ========== PRE-PRINT MODAL STYLES ==========
+    preprintItemRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: p.border },
+    preprintItemName: { flex: 1, fontSize: 14, fontWeight: "600", color: p.text },
+    preprintItemQty: { fontSize: 14, color: p.muted, marginRight: 10 },
+    preprintItemPrice: { fontSize: 14, fontWeight: "bold", color: p.text },
     qrPanel: { position: "absolute", bottom: 20, right: 20, width: 360, maxHeight: 400, backgroundColor: p.surface, borderRadius: 16, borderWidth: 2, borderColor: "#DC2626", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 10, elevation: 10, overflow: "hidden" },
     qrPanelHeader: { backgroundColor: "#DC2626", padding: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     qrPanelTitle: { color: "#fff", fontSize: 16, fontWeight: "bold" },
@@ -174,6 +185,13 @@ export default function POSHomeScreen() {
   const [nowTick, setNowTick] = useState(Date.now());
   const [qrOrders, setQrOrders] = useState([]);
   const qrCountRef = useRef(0);
+
+  // ========== PRE-PRINT STATE ==========
+  const [preprintTable, setPreprintTable] = useState(null);
+  const [preprintItems, setPreprintItems] = useState([]);
+  const [preprintTotals, setPreprintTotals] = useState(null);
+  const [preprintIsCopy, setPreprintIsCopy] = useState(true);
+  const [preprintLoading, setPreprintLoading] = useState(false);
 
   const playOrderSound = () => {
     try {
@@ -452,8 +470,8 @@ export default function POSHomeScreen() {
       const items = tb.open_order.items || [];
       const allProducts = await inventoryApi.getProducts();
       const loadedCart = items.map((i) => {
-      const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
-      const product = allProducts.find((pp) => pp.id === i.product_id);
+        const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
+        const product = allProducts.find((pp) => pp.id === i.product_id);
         return {
           ...i,
           id: String(i.variant_id) + (modsKey ? "_" + modsKey : ""),
@@ -478,14 +496,87 @@ export default function POSHomeScreen() {
     setOriginalCartForTable([]);
   };
 
+  // ========== PRE-PRINT FUNCTIONS ==========
+  const openPreprint = async (tb) => {
+    if (!tb.open_order) return;
+    setPreprintLoading(true);
+    try {
+      const items = tb.open_order.items || [];
+      const allProducts = await inventoryApi.getProducts();
+      const normalizedItems = items.map((i) => {
+        const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
+        const product = allProducts.find((pp) => pp.id === i.product_id);
+        return {
+          ...i,
+          id: String(i.variant_id) + (modsKey ? "_" + modsKey : ""),
+          name: i.name || i.product_name || product?.name || "Item",
+          is_time_based: product?.is_time_based || false,
+          time_unit_minutes: product?.time_unit_minutes || null,
+        };
+      });
+
+      const startTime = tb.open_order.created_at ? new Date(tb.open_order.created_at).getTime() : null;
+      const finalItems = applyTimeCharges(normalizedItems, startTime, Date.now());
+
+      const raw = finalItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      let pTax, pTotal;
+      if (vatInclusive) {
+        pTotal = raw;
+        pTax = pTotal - pTotal / (1 + taxRate);
+      } else {
+        pTax = raw * taxRate;
+        pTotal = raw + pTax;
+      }
+
+      setPreprintItems(finalItems);
+      setPreprintTotals({ subtotal: raw, tax: pTax, total: pTotal });
+      setPreprintTable(tb);
+      setPreprintIsCopy(true);
+    } catch (e) {
+      Alert.alert("Error", "Failed to load table data for pre-print.");
+    } finally {
+      setPreprintLoading(false);
+    }
+  };
+
+  const printPreprint = async () => {
+    if (!preprintTable || !preprintTotals) return;
+    try {
+      const result = await printReceipt({
+        items: preprintItems,
+        subtotal: preprintTotals.subtotal,
+        tax: preprintTotals.tax,
+        total: preprintTotals.total,
+        discount: 0,
+        payment: null,
+        store,
+        settings,
+        orderId: "PRE-" + preprintTable.id,
+        billNumber: preprintTable.open_order?.bill_number,
+        dining: "dine_in",
+        table: preprintTable.name,
+        duplicate: preprintIsCopy,
+      });
+      if (!result.success) Alert.alert("Print Failed", result.error || "Could not print.");
+      setPreprintTable(null);
+      setPreprintItems([]);
+      setPreprintTotals(null);
+    } catch (e) {
+      Alert.alert("Print Error", e.message);
+    }
+  };
+
   const parkToTable = async () => {
     if (!activeTable) return;
     if (cart.length === 0) {
       Alert.alert(t("cartEmpty"));
       return;
     }
+    
+    const currentTable = activeTable;
+    const isNewOrder = !currentTable.open_order;
+    
     try {
-      const isNewOrder = !activeTable.open_order;
       const addedItems =
         originalCartForTable.length === 0
           ? cart
@@ -498,31 +589,37 @@ export default function POSHomeScreen() {
               })
               .filter(Boolean);
 
-      await backofficeApi.saveTableOrder(activeTable.id, serializeCart());
+      await backofficeApi.saveTableOrder(currentTable.id, serializeCart());
 
-      if (addedItems.length > 0) {
-        const kpGroups = routeItemsForKitchen(addedItems, settings);
-        for (const g of kpGroups) {
-          await printKitchenTicket({
-            type: isNewOrder ? "NEW" : "ADDITION",
-            table: activeTable.name,
-            billNumber: activeTable.open_order?.bill_number,
-            dining: settings.diningEnabled ? diningOption : null,
-            items: g.items,
-            settings,
-            printer: g.printer,
-          });
-        }
-      }
-
-      Alert.alert("✅", t("parkOn") + " " + activeTable.name + " " + t("payLater"));
+      Alert.alert("✅", t("parkOn") + " " + currentTable.name + " " + t("payLater"));
       setCart([]);
       setActiveTable(null);
       setOriginalCartForTable([]);
       setTablesView(true);
       loadTables();
+
+      if (addedItems.length > 0) {
+        try {
+          const kpGroups = routeItemsForKitchen(addedItems, settings);
+          for (const g of kpGroups) {
+            await printKitchenTicket({
+              type: isNewOrder ? "NEW" : "ADDITION",
+              table: currentTable.name,
+              billNumber: currentTable.open_order?.bill_number,
+              dining: settings.diningEnabled ? diningOption : null,
+              items: g.items,
+              settings,
+              printer: g.printer,
+            });
+          }
+        } catch (printErr) {
+          console.error("Kitchen print failed on park:", printErr);
+        }
+      }
+
     } catch (error) {
-      Alert.alert("Error", "Failed to park order.");
+      console.error("Park table error:", error);
+      Alert.alert("Error", "Failed to park order: " + (error.response?.data?.error || error.message || "Database connection issue."));
     }
   };
 
@@ -559,7 +656,7 @@ export default function POSHomeScreen() {
     setPaymentMethod("cash");
     setAmountTendered(total.toFixed(dec));
     setSplitCash((total / 2).toFixed(dec));
-    setDiningOption("dine_in");
+    setDiningOption(activeTable ? "dine_in" : "takeaway");
     setPaymentModalVisible(true);
   };
 
@@ -583,7 +680,6 @@ export default function POSHomeScreen() {
       await api.post(`/qr/order/${orderId}/accept`);
       setQrOrders((prev) => prev.filter((o) => o.id !== orderId));
       
-      // Trigger kitchen print
       const table = tables.find((t) => t.id === order.table_id);
       if (table && order.items && order.items.length > 0) {
         const normalizedItems = order.items.map((item) => ({
@@ -656,6 +752,26 @@ export default function POSHomeScreen() {
         payment,
       });
 
+      if (!activeTable) {
+        const ticketTable = diningOption === "takeaway" ? "TAKEAWAY" : (settings.diningEnabled ? "DINE-IN" : "COUNTER");
+        const kpGroups = routeItemsForKitchen(finalCart, settings);
+        for (const g of kpGroups) {
+          try {
+            await printKitchenTicket({
+              type: "NEW",
+              table: ticketTable,
+              billNumber: billNumber,
+              dining: diningOption,
+              items: g.items,
+              settings,
+              printer: g.printer,
+            });
+          } catch (printErr) {
+            console.error("Kitchen print failed:", printErr);
+          }
+        }
+      }
+
       const quantityByVariant = {};
       finalCart.forEach((cartItem) => {
         quantityByVariant[cartItem.variant_id] = (quantityByVariant[cartItem.variant_id] || 0) + cartItem.quantity;
@@ -676,6 +792,17 @@ export default function POSHomeScreen() {
       if (activeTable) {
         await backofficeApi.clearTableOrder(activeTable.id).catch(() => {});
         loadTables();
+      }
+
+      const cd = settings.cashDrawer || {};
+      const isCashPayment = payment && payment.payment_method === "cash";
+      if (cd.enabled && cd.autoOnCash !== false && isCashPayment) {
+        try {
+          const mod = await import("../services/printerService");
+          await mod.openCashDrawer(settings);
+        } catch (e) {
+          console.warn("Auto-open drawer failed:", e);
+        }
       }
 
       setCompletedSale({
@@ -809,7 +936,7 @@ export default function POSHomeScreen() {
     <View style={styles.container}>
       <HardwareScannerInput
         onBarcode={handleBarcodeScanned}
-        active={!scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal}
+        active={!scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable}
       />
 
       <View style={styles.productsPanel}>
@@ -856,25 +983,32 @@ export default function POSHomeScreen() {
                 : 0;
 
               return (
-                <TouchableOpacity key={tb.id} style={[styles.productCard, { borderWidth: 2, borderColor: occupied ? p.danger : p.accent, position: "relative" }]} onPress={() => handleTableTap(tb)}>
-                  {hasVoidedItems ? (
-                    <View style={styles.voidBadge}>
-                      <Text style={styles.voidBadgeText}>VOID</Text>
+                <View key={tb.id} style={[styles.productCard, { borderWidth: 2, borderColor: occupied ? p.danger : p.accent, position: "relative" }]}>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => handleTableTap(tb)}>
+                    {hasVoidedItems ? (
+                      <View style={styles.voidBadge}>
+                        <Text style={styles.voidBadgeText}>VOID</Text>
+                      </View>
+                    ) : null}
+                    {settings.tableTimingEnabled && occupied && timerStart ? (
+                      <View style={[styles.timerBadge, { backgroundColor: getTimerColor(elapsedSeconds) }]}>
+                        <Text style={styles.timerBadgeText}>⏱ {formatTimer(elapsedSeconds)}</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.productIconContainer}>
+                      <Text style={styles.productIcon}>{occupied ? "🔴" : "🟢"}</Text>
                     </View>
-                  ) : null}
-                  {settings.tableTimingEnabled && occupied && timerStart ? (
-                    <View style={[styles.timerBadge, { backgroundColor: getTimerColor(elapsedSeconds) }]}>
-                      <Text style={styles.timerBadgeText}>⏱ {formatTimer(elapsedSeconds)}</Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.productIconContainer}>
-                    <Text style={styles.productIcon}>{occupied ? "🔴" : "🟢"}</Text>
-                  </View>
-                  <Text style={styles.productName} numberOfLines={1}>{tb.name}</Text>
-                  <Text style={styles.productDesc}>{" "}</Text>
-                  <Text style={styles.productPrice}>{occupied ? fm(tTotal + timeBasedCost) : t("free")}</Text>
-                  <Text style={styles.outOfStockText}>{" "}</Text>
-                </TouchableOpacity>
+                    <Text style={styles.productName} numberOfLines={1}>{tb.name}</Text>
+                    <Text style={styles.productDesc}>{" "}</Text>
+                    <Text style={styles.productPrice}>{occupied ? fm(tTotal + timeBasedCost) : t("free")}</Text>
+                    <Text style={styles.outOfStockText}>{" "}</Text>
+                  </TouchableOpacity>
+                  {occupied && (
+                    <TouchableOpacity style={styles.preprintBtn} onPress={() => openPreprint(tb)} title="Pre-print Bill">
+                      <Text style={styles.preprintBtnText}>🖨️</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               );
             })}
           </ScrollView>
@@ -891,29 +1025,31 @@ export default function POSHomeScreen() {
 
       <View style={styles.cartPanel}>
         <View style={styles.cartHeader}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={styles.cartHeaderLeft}>
+            {can("cash") ? (
+              <View style={styles.cashBtnRow}>
+                <TouchableOpacity style={styles.cashInButton} onPress={() => openCashModal("cash_in")}>
+                  <Text style={styles.cashInText}>💵 {t("cashIn")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cashOutButton} onPress={() => openCashModal("cash_out")}>
+                  <Text style={styles.cashOutText}>💸 {t("cashOut")}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <Text style={styles.cartTitle}>{t("currentTicket")}</Text>
             {activeTable ? (
-              <TouchableOpacity style={[styles.voidButton, { backgroundColor: p.accent, width: "auto", paddingHorizontal: 10, marginLeft: 0 }]} onPress={detachTable}>
-                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🪑 {activeTable.name} ✕</Text>
+              <TouchableOpacity style={{ backgroundColor: p.accent, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4 }} onPress={detachTable}>
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🪑 {activeTable.name}</Text>
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✕</Text>
               </TouchableOpacity>
             ) : null}
           </View>
-          <TouchableOpacity onPress={voidTicket}>
-            <Text style={styles.voidAllText}>{t("void")}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {can("cash") ? (
-          <View style={styles.cashRow}>
-            <TouchableOpacity style={styles.cashInButton} onPress={() => openCashModal("cash_in")}>
-              <Text style={styles.cashInText}>💵 {t("cashIn")}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cashOutButton} onPress={() => openCashModal("cash_out")}>
-              <Text style={styles.cashOutText}>💸 {t("cashOut")}</Text>
+          <View style={styles.cartHeaderRight}>
+            <TouchableOpacity onPress={voidTicket} style={{ paddingHorizontal: 6 }}>
+              <Text style={styles.voidAllText}>{t("void")}</Text>
             </TouchableOpacity>
           </View>
-        ) : null}
+        </View>
 
         <ScrollView style={styles.cartList}>
           {cart.length === 0 ? (
@@ -924,15 +1060,15 @@ export default function POSHomeScreen() {
           ) : (
             displayCart.map((item) => (
               <View key={item.id} style={styles.cartItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cartItemName}>{item.name}</Text>
+                <View style={styles.cartItemLeft}>
+                  <Text style={styles.cartItemName} numberOfLines={2}>{item.name}</Text>
                   {item.time_elapsed_minutes ? (
                     <Text style={styles.cartItemMods}>⏱ {formatTimer(item.time_elapsed_minutes * 60)} • {item.time_units} × {item.time_unit_minutes}min</Text>
                   ) : null}
                   {item.modifiers && item.modifiers.length > 0 ? (
                     <Text style={styles.cartItemMods}>{item.modifiers.map((m) => "+ " + m.name).join(", ")}</Text>
                   ) : null}
-                  <Text style={styles.cartItemPrice}>{fm(item.price * item.quantity)}</Text>
+                  <Text style={styles.cartItemPrice}>{item.quantity} × {fm(item.price)} = {fm(item.price * item.quantity)}</Text>
                 </View>
                 <View style={styles.quantityControls}>
                   <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={styles.qtyBtn}>
@@ -974,18 +1110,36 @@ export default function POSHomeScreen() {
             <Text style={styles.bold}>{t("total")}</Text>
             <Text style={styles.bold}>{fm(total)}</Text>
           </View>
+
           {activeTable ? (
-            <TouchableOpacity style={[styles.payButton, { backgroundColor: "#64748B", marginBottom: 10 }]} onPress={parkToTable}>
-              <Text style={styles.payButtonText}>🪑 {t("parkOn")} {activeTable.name} {t("payLater")}</Text>
+            <TouchableOpacity style={[styles.payButton, { backgroundColor: "#64748B" }]} onPress={parkToTable}>
+              <Text style={styles.payButtonText}>🪑 {t("parkOn")} {activeTable.name}</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.payButton} onPress={openPaymentModal} disabled={processing}>
+
+          {settings.cashDrawer && settings.cashDrawer.enabled ? (
+            <TouchableOpacity
+              style={[styles.payButton, { backgroundColor: "#F59E0B" }]}
+              onPress={async () => {
+                try {
+                  const mod = await import("../services/printerService");
+                  const res = await mod.openCashDrawer(settings);
+                  if (!res.success) Alert.alert("Drawer Error", res.error || "Could not open drawer.");
+                } catch (e) {
+                  Alert.alert("Drawer Error", e.message);
+                }
+              }}
+            >
+              <Text style={styles.payButtonText}>💰 Open Cash Drawer</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity style={[styles.payButton, { marginBottom: 0 }]} onPress={openPaymentModal} disabled={processing}>
             <Text style={styles.payButtonText}>{processing ? t("processing") : t("charge") + " " + fm(total)}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* QR ORDERS PANEL */}
       {qrOrders.length > 0 && (
         <View style={styles.qrPanel}>
           <View style={styles.qrPanelHeader}>
@@ -1042,6 +1196,57 @@ export default function POSHomeScreen() {
       />
 
       <BarcodeScannerModal visible={scannerVisible} onClose={() => setScannerVisible(false)} onScanned={handleBarcodeScanned} />
+
+      {/* ========== PRE-PRINT MODAL ========== */}
+      <Modal visible={Boolean(preprintTable)} transparent animationType="fade" onRequestClose={() => setPreprintTable(null)}>
+        <View style={styles.paymentOverlay}>
+          <View style={styles.paymentCard}>
+            <Text style={styles.paymentTitle}>🖨️ Pre-print Bill</Text>
+            <Text style={{ fontSize: 18, fontWeight: "bold", color: p.text, marginBottom: 6 }}>
+              🪑 {preprintTable ? preprintTable.name : ""}
+            </Text>
+            <Text style={{ fontSize: 14, color: p.muted, marginBottom: 16 }}>
+              {preprintItems.length} item{preprintItems.length !== 1 ? "s" : ""} • Running total: {preprintTotals ? fm(preprintTotals.total) : ""}
+            </Text>
+
+            {/* Items list */}
+            <ScrollView style={{ maxHeight: 200, marginBottom: 16, borderWidth: 1, borderColor: p.border, borderRadius: 8, paddingHorizontal: 12 }}>
+              {preprintItems.map((item, idx) => (
+                <View key={idx} style={styles.preprintItemRow}>
+                  <Text style={styles.preprintItemName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.preprintItemQty}>{item.quantity}x</Text>
+                  <Text style={styles.preprintItemPrice}>{fm(item.price * item.quantity)}</Text>
+                </View>
+              ))}
+            </ScrollView>
+
+            {/* COPY toggle */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: preprintIsCopy ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: preprintIsCopy ? p.accent : p.border }}
+                onPress={() => setPreprintIsCopy(!preprintIsCopy)}
+              >
+                <Text style={{ color: preprintIsCopy ? "#fff" : p.text, fontWeight: "bold", fontSize: 14 }}>
+                  {preprintIsCopy ? "✅ Print as COPY" : "⬜ Print as Original"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 12, color: p.muted, marginBottom: 20, textAlign: "center" }}>
+              COPY adds a "★ DUPLICATE BILL ★" header so it's not confused with the final receipt.
+            </Text>
+
+            {/* Action buttons */}
+            <View style={styles.paymentButtonRow}>
+              <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setPreprintTable(null)}>
+                <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.paymentConfirmButton} onPress={printPreprint}>
+                <Text style={styles.paymentConfirmText}>🖨️ Print Pre-bill</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={paymentModalVisible} transparent animationType="fade" onRequestClose={() => setPaymentModalVisible(false)}>
         <View style={styles.paymentOverlay}>

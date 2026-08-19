@@ -32,10 +32,11 @@ function BusinessHoursCard() {
     </View>
   );
 }
+
 function QROrderingCard() {
   const ctx = useSettings();
   const { settings } = ctx;
-  const { store } = useAuth();  // ← NEW: get real store from auth
+  const { store } = useAuth();
   const save = ctx.updateSettings || (() => {});
   const on = Boolean(settings.qrOrderingEnabled);
   const [tables, setTables] = useState([]);
@@ -51,17 +52,16 @@ function QROrderingCard() {
   }, [on]);
 
   const qrBase = typeof window !== "undefined" ? window.location.origin : "";
-  
-  // FIX: safely extract store name from any source
+
   const rawLine = settings.receipt?.headerLines?.[0];
-  const firstHeaderLine = rawLine 
-    ? (typeof rawLine === "string" ? rawLine : (rawLine.text || "")) 
+  const firstHeaderLine = rawLine
+    ? (typeof rawLine === "string" ? rawLine : (rawLine.text || ""))
     : "";
-  const storeName = 
-    (store && store.name) ||              // ← Primary: real store name
-    firstHeaderLine ||                     // ← Fallback 1: receipt header
-    settings.receipt?.headerText ||        // ← Fallback 2: legacy text
-    "OUR STORE";                           // ← Final fallback
+  const storeName =
+    (store && store.name) ||
+    firstHeaderLine ||
+    settings.receipt?.headerText ||
+    "OUR STORE";
 
   const printOne = async (tb) => {
     try {
@@ -103,6 +103,154 @@ function QROrderingCard() {
             <Text style={{ color: "#fff", fontWeight: "bold" }}>🖨 Print ALL Table QRs</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 8 }}>💡 Tip: print stickers from your LIVE app (Vercel) so the QR links to your online menu.</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ========== 💰 CASH DRAWER CARD ==========
+function CashDrawerCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const save = ctx.updateSettings || (() => {});
+  const [availablePrinters, setAvailablePrinters] = useState([]);
+  const [detecting, setDetecting] = useState(false);
+
+  const cd = settings.cashDrawer || { enabled: false, pin: 2, autoOnCash: true };
+  const setCD = (patch) => save({ cashDrawer: { ...cd, ...patch } });
+
+  const detectPrinters = async () => {
+    setDetecting(true);
+    try {
+      const mod = await import("../api/client");
+      const apiClient = mod.api || mod.default;
+      const res = await apiClient.get("/printer/list");
+      setAvailablePrinters(res.data.printers || []);
+      if (res.data.printers && res.data.printers.length > 0) {
+        Alert.alert("✅", `Found ${res.data.printers.length} printer(s)`);
+      } else {
+        Alert.alert("⚠️", "No printers detected.");
+      }
+    } catch (e) {
+      Alert.alert("❌", "Could not detect printers: " + e.message);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const testDrawer = async () => {
+    try {
+      const mod = await import("../services/printerService");
+      const res = await mod.openCashDrawer(settings);
+      if (res.success) Alert.alert("✅", "Drawer signal sent!");
+      else Alert.alert("❌", res.error || "Failed");
+    } catch (e) {
+      Alert.alert("❌", e.message);
+    }
+  };
+
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>💰 Cash Drawer</Text>
+
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: cd.enabled ? "#43A047" : "#fff", borderWidth: 2, borderColor: cd.enabled ? "#43A047" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+          onPress={() => setCD({ enabled: true })}
+        >
+          <Text style={{ color: cd.enabled ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: !cd.enabled ? "#EF4444" : "#fff", borderWidth: 2, borderColor: !cd.enabled ? "#EF4444" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+          onPress={() => setCD({ enabled: false })}
+        >
+          <Text style={{ color: !cd.enabled ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 10 }}>
+        Controls the physical cash drawer connected to your receipt printer via RJ11/RJ12 cable.
+      </Text>
+
+      {cd.enabled ? (
+        <View>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F172A", marginBottom: 6, marginTop: 8 }}>📌 Drawer Pin</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: cd.pin === 2 ? "#43A047" : "#fff", borderWidth: 1, borderColor: cd.pin === 2 ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+              onPress={() => setCD({ pin: 2 })}
+            >
+              <Text style={{ color: cd.pin === 2 ? "#fff" : "#64748B", fontWeight: "bold" }}>Pin 2 (Default)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: cd.pin === 5 ? "#43A047" : "#fff", borderWidth: 1, borderColor: cd.pin === 5 ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+              onPress={() => setCD({ pin: 5 })}
+            >
+              <Text style={{ color: cd.pin === 5 ? "#fff" : "#64748B", fontWeight: "bold" }}>Pin 5</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ fontSize: 11, color: "#94A3B8", marginBottom: 10 }}>Most drawers use Pin 2. Try Pin 5 if Pin 2 doesn't work.</Text>
+
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F172A", marginBottom: 6 }}>💵 Auto-Open on Cash Payment</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: cd.autoOnCash !== false ? "#43A047" : "#fff", borderWidth: 1, borderColor: cd.autoOnCash !== false ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+              onPress={() => setCD({ autoOnCash: true })}
+            >
+              <Text style={{ color: cd.autoOnCash !== false ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: cd.autoOnCash === false ? "#EF4444" : "#fff", borderWidth: 1, borderColor: cd.autoOnCash === false ? "#EF4444" : "#CBD5E1", borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
+              onPress={() => setCD({ autoOnCash: false })}
+            >
+              <Text style={{ color: cd.autoOnCash === false ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={{ backgroundColor: "#0EA5E9", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 10 }}
+            onPress={detectPrinters}
+            disabled={detecting}
+          >
+            <Text style={{ color: "#fff", fontWeight: "bold" }}>
+              {detecting ? "Detecting..." : "🔍 Detect Printers"}
+            </Text>
+          </TouchableOpacity>
+
+          {availablePrinters.length > 0 ? (
+            <View style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Select printer for drawer:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
+                {availablePrinters.map((printerName, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={{
+                      backgroundColor: cd.printerName === printerName ? "#43A047" : "#fff",
+                      borderWidth: 1,
+                      borderColor: cd.printerName === printerName ? "#43A047" : "#CBD5E1",
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      marginRight: 8,
+                    }}
+                    onPress={() => setCD({ printerName })}
+                  >
+                    <Text style={{ color: cd.printerName === printerName ? "#fff" : "#334155", fontWeight: "bold", fontSize: 12 }}>
+                      {printerName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={{ backgroundColor: "#0F172A", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+            onPress={testDrawer}
+          >
+            <Text style={{ color: "#fff", fontWeight: "bold" }}>🧪 Test Open Drawer</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
     </View>
@@ -161,7 +309,6 @@ function KitchenPrinterCard() {
   const addKP = () => setKps([...kps, { id: "kp" + Date.now(), name: "Kitchen " + (kps.length + 1), enabled: true, connection: "browser", paperSize: "80" }]);
   const removeKP = (id) => setKps(kps.filter((k) => k.id !== id));
 
-  // NEW: Detect printers from system
   const detectPrinters = async () => {
     setDetecting(true);
     try {
@@ -203,9 +350,8 @@ function KitchenPrinterCard() {
     <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
       <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>🍳 {t("kitchenPrinter") || "Kitchen Printer"}</Text>
 
-      {/* NEW: Detect Printers Button */}
-      <TouchableOpacity 
-        style={{ backgroundColor: "#0EA5E9", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 14 }} 
+      <TouchableOpacity
+        style={{ backgroundColor: "#0EA5E9", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 14 }}
         onPress={detectPrinters}
         disabled={detecting}
       >
@@ -240,8 +386,7 @@ function KitchenPrinterCard() {
               </TouchableOpacity>
             ))}
           </View>
-          
-          {/* NEW: Printer Selection Dropdown (for network printers) */}
+
           {kp.connection === "network" ? (
             <View>
               {availablePrinters.length > 0 ? (
@@ -249,17 +394,17 @@ function KitchenPrinterCard() {
                   <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Select Printer:</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
                     {availablePrinters.map((printerName, idx) => (
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         key={idx}
-                        style={{ 
-                          backgroundColor: kp.address === printerName ? "#43A047" : "#fff", 
-                          borderWidth: 1, 
-                          borderColor: kp.address === printerName ? "#43A047" : "#CBD5E1", 
-                          borderRadius: 8, 
-                          paddingHorizontal: 12, 
+                        style={{
+                          backgroundColor: kp.address === printerName ? "#43A047" : "#fff",
+                          borderWidth: 1,
+                          borderColor: kp.address === printerName ? "#43A047" : "#CBD5E1",
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
                           paddingVertical: 8,
                           marginRight: 8
-                        }} 
+                        }}
                         onPress={() => updateKP(kp.id, { address: printerName })}
                       >
                         <Text style={{ color: kp.address === printerName ? "#fff" : "#334155", fontWeight: "bold", fontSize: 12 }}>
@@ -270,7 +415,7 @@ function KitchenPrinterCard() {
                   </ScrollView>
                 </View>
               ) : null}
-              
+
               <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Or type manually:</Text>
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <TextInput style={{ flex: 2, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} value={kp.address || ""} onChangeText={(v) => updateKP(kp.id, { address: v })} placeholder="Printer name or IP" placeholderTextColor="#94A3B8" />
@@ -440,7 +585,7 @@ const pickLogo = async (which) => {
   input.onchange = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    
+
     try {
       Alert.alert("⏳", "Uploading image...");
       const result = await uploadImage(file);
@@ -593,22 +738,26 @@ const pickLogo = async (which) => {
           <Text style={styles.cardLabel}>{t("useTables")}</Text>
           <View style={styles.optionRow}>
             <TouchableOpacity style={[styles.optionButton, settings.tablesEnabled && styles.optionButtonActive]} onPress={() => updateSettings({ tablesEnabled: true })}>
-              <Text style={[styles.optionText, settings.tablesEnabled && styles.optionTextActive]}>{t("on")}</Text>
+              <Text style={[styles.optionText, settings.tablesEnabled && styles.optionButtonActive]}>{t("on")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.optionButton, !settings.tablesEnabled && styles.optionButtonActive]} onPress={() => updateSettings({ tablesEnabled: false })}>
               <Text style={[styles.optionText, !settings.tablesEnabled && styles.optionTextActive]}>{t("off")}</Text>
             </TouchableOpacity>
           </View>
         </View>
-           <Text style={styles.sectionTitle}>⏱ Table Timing</Text>
+
+        <Text style={styles.sectionTitle}>⏱ Table Timing</Text>
         <TableTimingCard />
-		<Text style={styles.sectionTitle}>📲 QR Ordering</Text>
+
+        <Text style={styles.sectionTitle}>📲 QR Ordering</Text>
         <QROrderingCard />
+
+        <Text style={styles.sectionTitle}>💰 Cash Drawer</Text>
+        <CashDrawerCard />
 
         <Text style={styles.sectionTitle}>{t("kitchfenPrinter") || "Kitchen Printer"}</Text>
         <KitchenPrinterCard />
 
-        {/* ☁️ CLOUD PRINT ADDED HERE */}
         <Text style={styles.sectionTitle}>☁️ Cloud Print (Agent)</Text>
         <CloudPrintSettings />
 
@@ -683,10 +832,10 @@ const pickLogo = async (which) => {
 
           <View style={styles.optionRow}>
             <TouchableOpacity style={[styles.optionButton, rc.showTax !== false && styles.optionButtonActive]} onPress={() => saveReceipt({ showTax: true })}>
-              <Text style={[styles.optionText, rc.showTax !== false && styles.optionTextActive]}>{t("showVat")}</Text>
+              <Text style={[styles.optionText, rc.showTax !== false && styles.optionButtonActive]}>{t("showVat")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.optionButton, rc.showTax === false && styles.optionButtonActive]} onPress={() => saveReceipt({ showTax: false })}>
-              <Text style={[styles.optionText, rc.showTax === false && styles.optionTextActive]}>{t("hideVat")}</Text>
+              <Text style={[styles.optionText, rc.showTax === false && styles.optionButtonActive]}>{t("hideVat")}</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.cardLabel}>{t("paperSize")}</Text>
@@ -695,7 +844,7 @@ const pickLogo = async (which) => {
               <Text style={[styles.optionText, rc.paperSize !== "58" && styles.optionButtonActive]}>80mm</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.optionButton, rc.paperSize === "58" && styles.optionButtonActive]} onPress={() => saveReceipt({ paperSize: "58" })}>
-              <Text style={[styles.optionText, rc.paperSize === "58" && styles.optionTextActive]}>58mm</Text>
+              <Text style={[styles.optionText, rc.paperSize === "58" && styles.optionButtonActive]}>58mm</Text>
             </TouchableOpacity>
           </View>
 
