@@ -6,7 +6,6 @@ import { useI18n } from "../i18n/I18nContext";
 import { backofficeApi } from "../api/backoffice";
 import { printReceipt } from "../services/printerService";
 import { telegramApi } from "../api/telegram";
-import CloudPrintSettings from "../components/CloudPrintSettings";
 import { uploadImage } from "../services/uploadService";
 
 function BusinessHoursCard() {
@@ -758,9 +757,7 @@ const pickLogo = async (which) => {
         <Text style={styles.sectionTitle}>{t("kitchfenPrinter") || "Kitchen Printer"}</Text>
         <KitchenPrinterCard />
 
-        <Text style={styles.sectionTitle}>☁️ Cloud Print (Agent)</Text>
-        <CloudPrintSettings />
-
+       
         <Text style={styles.sectionTitle}>{t("printer")}</Text>
         <View style={styles.card}>
           <View style={styles.optionRow}>
