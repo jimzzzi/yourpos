@@ -18,6 +18,9 @@ export async function uploadImage(file, onProgress) {
 
   try {
     const response = await api.post("/upload/image", formData, {
+      // ✅ Force axios to remove the default application/json header
+      // so it can auto-detect multipart/form-data with proper boundary
+      headers: { "Content-Type": undefined },
       onUploadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
