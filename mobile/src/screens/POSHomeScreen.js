@@ -109,10 +109,8 @@ function makeStyles(p, cols) {
     voidBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
     timerBadge: { position: "absolute", bottom: 4, right: 4, backgroundColor: "#0F172A", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
     timerBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
-    // ========== PRE-PRINT BUTTON ON BUSY TABLES ==========
     preprintBtn: { position: "absolute", top: 6, left: 6, backgroundColor: "#0EA5E9", borderRadius: 8, width: 34, height: 34, justifyContent: "center", alignItems: "center", zIndex: 10, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
     preprintBtnText: { fontSize: 16 },
-    // ========== PRE-PRINT MODAL STYLES ==========
     preprintItemRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: p.border },
     preprintItemName: { flex: 1, fontSize: 14, fontWeight: "600", color: p.text },
     preprintItemQty: { fontSize: 14, color: p.muted, marginRight: 10 },
@@ -186,7 +184,6 @@ export default function POSHomeScreen() {
   const [qrOrders, setQrOrders] = useState([]);
   const qrCountRef = useRef(0);
 
-  // ========== PRE-PRINT STATE ==========
   const [preprintTable, setPreprintTable] = useState(null);
   const [preprintItems, setPreprintItems] = useState([]);
   const [preprintTotals, setPreprintTotals] = useState(null);
@@ -496,7 +493,6 @@ export default function POSHomeScreen() {
     setOriginalCartForTable([]);
   };
 
-  // ========== PRE-PRINT FUNCTIONS ==========
   const openPreprint = async (tb) => {
     if (!tb.open_order) return;
     setPreprintLoading(true);
@@ -1088,8 +1084,13 @@ export default function POSHomeScreen() {
         </ScrollView>
 
         <View style={styles.cartFooter}>
+          {/* ========== UAE STANDARD: Subtotal (excl VAT) ========== */}
           <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>{t("subtotal")}</Text>
+            <Text style={styles.totalsLabel}>
+              {vatInclusive 
+                ? (settings.receiptLanguage === "ar" ? "المجموع (بدون ضريبة)" : "Subtotal (excl. VAT)") 
+                : (settings.receiptLanguage === "ar" ? "المجموع الفرعي" : "Subtotal")}
+            </Text>
             <Text style={styles.totalsValue}>{fm(subtotal)}</Text>
           </View>
           <View style={styles.totalsRow}>
@@ -1102,12 +1103,22 @@ export default function POSHomeScreen() {
               <Text style={styles.discountValue}>{"-" + fm(discount)}</Text>
             )}
           </View>
+          {/* ========== UAE STANDARD: VAT separate line ========== */}
           <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>{vatInclusive ? t("vatIncl") : t("vatExcl")}</Text>
+            <Text style={styles.totalsLabel}>
+              {settings.receiptLanguage === "ar" 
+                ? "ضريبة القيمة المضافة " + (store?.tax_rate || 0) + "%" 
+                : "VAT " + (store?.tax_rate || 0) + "%"}
+            </Text>
             <Text style={styles.totalsValue}>{fm(tax)}</Text>
           </View>
+          {/* ========== UAE STANDARD: Total (incl. VAT) ========== */}
           <View style={[styles.totalsRow, styles.totalRow]}>
-            <Text style={styles.bold}>{t("total")}</Text>
+            <Text style={styles.bold}>
+              {vatInclusive
+                ? (settings.receiptLanguage === "ar" ? "الإجمالي (شامل الضريبة)" : "Total (incl. VAT)")
+                : (settings.receiptLanguage === "ar" ? "الإجمالي" : "Total")}
+            </Text>
             <Text style={styles.bold}>{fm(total)}</Text>
           </View>
 
@@ -1209,7 +1220,6 @@ export default function POSHomeScreen() {
               {preprintItems.length} item{preprintItems.length !== 1 ? "s" : ""} • Running total: {preprintTotals ? fm(preprintTotals.total) : ""}
             </Text>
 
-            {/* Items list */}
             <ScrollView style={{ maxHeight: 200, marginBottom: 16, borderWidth: 1, borderColor: p.border, borderRadius: 8, paddingHorizontal: 12 }}>
               {preprintItems.map((item, idx) => (
                 <View key={idx} style={styles.preprintItemRow}>
@@ -1220,7 +1230,6 @@ export default function POSHomeScreen() {
               ))}
             </ScrollView>
 
-            {/* COPY toggle */}
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: preprintIsCopy ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: preprintIsCopy ? p.accent : p.border }}
@@ -1235,7 +1244,6 @@ export default function POSHomeScreen() {
               COPY adds a "★ DUPLICATE BILL ★" header so it's not confused with the final receipt.
             </Text>
 
-            {/* Action buttons */}
             <View style={styles.paymentButtonRow}>
               <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setPreprintTable(null)}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>

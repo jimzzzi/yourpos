@@ -38,6 +38,44 @@ function getReceiptSettings(settings, store) {
   return { ...r, headerLines, footerLines };
 }
 
+// ========== DECIMALS HELPER (reads settings.decimals) ==========
+function getDecimals(settings) {
+  const d = settings && settings.decimals;
+  const n = Number(d);
+  return Number.isInteger(n) && n >= 0 && n <= 4 ? n : 2;
+}
+
+function fmt(value, settings) {
+  return Number(value || 0).toFixed(getDecimals(settings));
+}
+
+// ========== ARABIC LABELS FOR RECEIPTS ==========
+const AR_LABELS = {
+  subtotal: "المجموع الفرعي",
+  subtotalExcl: "المجموع (بدون ضريبة)",
+  vat: "ضريبة القيمة المضافة",
+  total: "الإجمالي",
+  totalIncl: "الإجمالي (شامل الضريبة)",
+  discount: "الخصم",
+  cash: "نقداً",
+  card: "بطاقة",
+  tendered: "المبلغ المدفوع",
+  change: "الباقي",
+  dineIn: "تناول في المطعم",
+  takeaway: "سفري",
+  billNo: "رقم الفاتورة",
+  date: "التاريخ",
+  table: "الطاولة",
+  copy: "★ نسخة من الفاتورة ★",
+};
+
+function getLbl(key, settings, defaultEn) {
+  if (settings && settings.receipt && settings.receipt.receiptLanguage === "ar" && AR_LABELS[key]) {
+    return AR_LABELS[key];
+  }
+  return defaultEn;
+}
+
 function buildReceiptParts(args) {
   const a = args || {};
   const store = a.store;
@@ -51,9 +89,9 @@ function buildReceiptParts(args) {
   const originalDate = a.createdAt ? new Date(a.createdAt).toLocaleString() : new Date().toLocaleString();
   const dateLine = originalDate;
   const printedLine = a.duplicate ? "Printed: " + new Date().toLocaleString() : null;
-  const billLine = a.billNumber ? "Bill No: " + String(a.billNumber).padStart(6, "0") : null;
-  const diningLine = a.dining ? (a.dining === "takeaway" ? "TAKEAWAY" : "DINE IN") : null;
-  const tableLine = a.table ? "TABLE: " + a.table : null;
+  const billLine = a.billNumber ? getLbl("billNo", a.settings, "Bill No") + ": " + String(a.billNumber).padStart(6, "0") : null;
+  const diningLine = a.dining ? (a.dining === "takeaway" ? getLbl("takeaway", a.settings, "TAKEAWAY") : getLbl("dineIn", a.settings, "DINE IN")) : null;
+  const tableLine = a.table ? getLbl("table", a.settings, "TABLE") + ": " + a.table : null;
 
   const itemsLines = [];
   (a.items || []).forEach((item) => {
@@ -64,15 +102,15 @@ function buildReceiptParts(args) {
     itemsLines.push(itemDisplay.slice(0, width));
     if (item.description) itemsLines.push("  " + String(item.description).slice(0, Math.max(8, width - 2)));
     if (item.time_elapsed_minutes) {
-      itemsLines.push("  " + item.time_units + " x " + item.time_unit_minutes + "min @ " + Number(item.original_price || item.price).toFixed(2));
+      itemsLines.push("  " + item.time_units + " x " + item.time_unit_minutes + "min @ " + fmt(item.original_price || item.price, a.settings));
     }
     (item.modifiers || []).forEach((m) => {
       itemsLines.push(" + " + String(m.name || "").slice(0, Math.max(8, width - 4)));
     });
     itemsLines.push(
       leftRight(
-        (item.quantity || 0) + " x " + Number(item.price || 0).toFixed(2),
-        Number((item.price || 0) * (item.quantity || 0)).toFixed(2),
+        (item.quantity || 0) + " x " + fmt(item.price, a.settings),
+        fmt((item.price || 0) * (item.quantity || 0), a.settings),
         width
       )
     );
@@ -80,23 +118,44 @@ function buildReceiptParts(args) {
   itemsLines.push(divider(width));
 
   const totals = [];
-  if (a.discount && Number(a.discount) > 0) totals.push(leftRight("Discount", "-" + Number(a.discount).toFixed(2), width));
-  totals.push(leftRight(vatInclusive ? "Subtotal (excl. VAT)" : "Subtotal", Number(a.subtotal || 0).toFixed(2), width));
-  if (rs.showTax !== false) totals.push(leftRight(vatInclusive ? "VAT " + rate + "% (incl.)" : "VAT " + rate + "%", Number(a.tax || 0).toFixed(2), width));
-
-  const totalLabel = "TOTAL (incl. VAT)";
-  const totalValue = Number(a.total || 0).toFixed(2);
+  if (a.discount && Number(a.discount) > 0) {
+    totals.push(leftRight(getLbl("discount", a.settings, "Discount"), "-" + fmt(a.discount, a.settings), width));
+  }
+  totals.push(leftRight(
+    vatInclusive 
+      ? getLbl("subtotalExcl", a.settings, "Subtotal (excl. VAT)") 
+      : getLbl("subtotal", a.settings, "Subtotal"),
+    fmt(a.subtotal, a.settings),
+    width
+  ));
+  if (rs.showTax !== false) {
+    totals.push(leftRight(
+      getLbl("vat", a.settings, "VAT") + " " + rate + "%",
+      fmt(a.tax, a.settings),
+      width
+    ));
+  }
+  const totalLabel = vatInclusive
+    ? getLbl("totalIncl", a.settings, "TOTAL (incl. VAT)")
+    : getLbl("total", a.settings, "TOTAL");
+  const totalValue = fmt(a.total, a.settings);
 
   const pays = [];
   pays.push(divider(width));
   const payment = a.payment;
   if (payment) {
     (payment.payments || []).forEach((p) => {
-      pays.push(leftRight(String(p.method || "").toUpperCase(), Number(p.amount || 0).toFixed(2), width));
+      const method = String(p.method || "").toLowerCase();
+      const methodLabel = method === "cash" 
+        ? getLbl("cash", a.settings, "CASH") 
+        : method === "card" 
+        ? getLbl("card", a.settings, "CARD") 
+        : method.toUpperCase();
+      pays.push(leftRight(methodLabel, fmt(p.amount, a.settings), width));
     });
     if (payment.payment_method === "cash") {
-      pays.push(leftRight("Tendered", Number(payment.amount_tendered || 0).toFixed(2), width));
-      pays.push(leftRight("Change", Number(payment.change_due || 0).toFixed(2), width));
+      pays.push(leftRight(getLbl("tendered", a.settings, "Tendered"), fmt(payment.amount_tendered, a.settings), width));
+      pays.push(leftRight(getLbl("change", a.settings, "Change"), fmt(payment.change_due, a.settings), width));
     }
   }
 
@@ -108,7 +167,7 @@ export function buildReceiptText(args) {
   const lines = [];
 
   if (args && args.duplicate) {
-    lines.push(centerText("★ COPY / DUPLICATE BILL ★", p.width));
+    lines.push(centerText(getLbl("copy", args.settings, "★ COPY / DUPLICATE BILL ★"), p.width));
     lines.push("");
   }
 
@@ -138,9 +197,13 @@ export function buildReceiptHtml(args) {
   const logoHeader = p.rs.headerLogo ? '<img src="' + p.rs.headerLogo + '" class="logo" />' : "";
   const logoFooter = p.rs.footerLogo ? '<img src="' + p.rs.footerLogo + '" class="logo" />' : "";
 
+  const isArabic = args && args.settings && args.settings.receipt && args.settings.receipt.receiptLanguage === "ar";
+  const dirAttr = isArabic ? ' dir="rtl"' : '';
+  const fontFamily = isArabic ? "'Arial', 'Tahoma', sans-serif" : "'Courier New', monospace";
+
   let headerHtml = "";
   if (args && args.duplicate) {
-    headerHtml += '<div class="bigcenter" style="font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 2px dashed #000; padding-bottom: 4px;">★ COPY / DUPLICATE BILL ★</div>';
+    headerHtml += '<div class="bigcenter" style="font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 2px dashed #000; padding-bottom: 4px;">' + escapeHtml(getLbl("copy", args.settings, "★ COPY / DUPLICATE BILL ★")) + "</div>";
   }
 
   p.headerLines.forEach((l) => { headerHtml += '<div class="c">' + escapeHtml(l) + "</div>"; });
@@ -161,13 +224,13 @@ export function buildReceiptHtml(args) {
     "<html><head><title>Receipt</title><style>" +
     "@page { size: " + paper + " auto; margin: 0; }" +
     "html, body { margin: 0; padding: 0; }" +
-    "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 12px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
+    "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: " + fontFamily + "; font-size: 12px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }" +
     "pre { margin: 0; font-family: inherit; font-size: inherit; font-weight: inherit; white-space: pre-wrap; }" +
     ".c { text-align: center; font-size: 12px; }" +
     ".bigcenter { text-align: center; font-size: 16px; font-weight: bold; margin: 3px 0; }" +
     ".logo { max-width: 90%; max-height: 24mm; display: block; margin: 0 auto 4px; }" +
     ".bigrow { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; margin: 4px 0; }" +
-    "</style></head><body>" +
+    "</style></head><body" + dirAttr + ">" +
     logoHeader + headerHtml +
     "<pre>" + escapeHtml(p.itemsLines.join("\n")) + "</pre>" +
     "<pre>" + escapeHtml(p.totals.join("\n")) + "</pre>" +
@@ -447,9 +510,6 @@ export async function printKitchenTicket(args) {
 }
 
 // ========== CASH DRAWER KICK ==========
-// ESC/POS standard command: ESC p m t1 t2
-// m=0 is pin 2 (most common), m=1 is pin 5
-// t1=25ms pulse on (0x19), t2=250ms pulse off (0xFA)
 function buildDrawerKickCommand(pin) {
   const m = pin === 5 ? 1 : 0;
   return "\x1B\x70" + String.fromCharCode(m) + "\x19\xFA";
@@ -481,7 +541,6 @@ export async function openCashDrawer(settings) {
 
     const pin = cd.pin || 2;
 
-    // Try Cloud Agent first
     if (USE_CLOUD_PRINT) {
       try {
         const cmd = buildDrawerKickCommand(pin);
@@ -496,7 +555,6 @@ export async function openCashDrawer(settings) {
       }
     }
 
-    // Try network printer (main receipt printer)
     const printer = s.printer || {};
     if (printer.connection === "network" && printer.address) {
       try {
@@ -507,7 +565,6 @@ export async function openCashDrawer(settings) {
       }
     }
 
-    // Fallback: browser print
     const html = buildDrawerHtml(pin);
     const result = printViaBrowser(html);
     return result;
