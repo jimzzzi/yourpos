@@ -38,7 +38,7 @@ function getReceiptSettings(settings, store) {
   return { ...r, headerLines, footerLines };
 }
 
-// ========== DECIMALS HELPER (reads settings.decimals) ==========
+// ========== DECIMALS HELPER ==========
 function getDecimals(settings) {
   const d = settings && settings.decimals;
   const n = Number(d);
@@ -69,8 +69,10 @@ const AR_LABELS = {
   copy: "★ نسخة من الفاتورة ★",
 };
 
+// ========== FIXED: Read receiptLanguage from root settings, not nested ==========
 function getLbl(key, settings, defaultEn) {
-  if (settings && settings.receipt && settings.receipt.receiptLanguage === "ar" && AR_LABELS[key]) {
+  const lang = settings && settings.receiptLanguage;
+  if (lang === "ar" && AR_LABELS[key]) {
     return AR_LABELS[key];
   }
   return defaultEn;
@@ -197,7 +199,9 @@ export function buildReceiptHtml(args) {
   const logoHeader = p.rs.headerLogo ? '<img src="' + p.rs.headerLogo + '" class="logo" />' : "";
   const logoFooter = p.rs.footerLogo ? '<img src="' + p.rs.footerLogo + '" class="logo" />' : "";
 
-  const isArabic = args && args.settings && args.settings.receipt && args.settings.receipt.receiptLanguage === "ar";
+  // ========== FIXED: Read receiptLanguage from root settings ==========
+  const lang = args && args.settings && args.settings.receiptLanguage;
+  const isArabic = lang === "ar";
   const dirAttr = isArabic ? ' dir="rtl"' : '';
   const fontFamily = isArabic ? "'Arial', 'Tahoma', sans-serif" : "'Courier New', monospace";
 
@@ -509,7 +513,7 @@ export async function printKitchenTicket(args) {
   }
 }
 
-// ========== CASH DRAWER KICK ==========
+// ========== CASH DRAWER KICK (SILENT - NO POPUP, NO PRINT) ==========
 function buildDrawerKickCommand(pin) {
   const m = pin === 5 ? 1 : 0;
   return "\x1B\x70" + String.fromCharCode(m) + "\x19\xFA";
@@ -519,15 +523,50 @@ function buildDrawerHtml(pin) {
   const cmd = buildDrawerKickCommand(pin);
   return (
     "<html><head><style>" +
-    "@page { size: 80mm auto; margin: 0; }" +
-    "html, body { margin: 0; padding: 0; background: #fff; }" +
+    "@page { size: 80mm 1mm; margin: 0; }" +
+    "html, body { margin: 0; padding: 0; background: #fff; width: 80mm; height: 1mm; overflow: hidden; }" +
     "body { font-family: 'Courier New', monospace; }" +
-    "pre { color: #fff; background: #fff; font-size: 1px; line-height: 1px; height: 1px; overflow: hidden; margin: 0; padding: 0; }" +
+    "pre { color: #fff; background: #fff; font-size: 1px; line-height: 1px; height: 0; overflow: hidden; margin: 0; padding: 0; }" +
     "</style></head><body>" +
     "<pre>" + cmd + "</pre>" +
-    "<script>window.onload=function(){setTimeout(function(){window.print();window.close();},100);}</script>" +
     "</body></html>"
   );
+}
+
+// Silent print - no dialog, auto-print and close
+function silentDrawerPrint(html) {
+  if (typeof document === "undefined") {
+    return { success: false, error: "Printing not supported." };
+  }
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      console.error("[DRAWER] silent print failed:", e);
+    }
+  }, 200);
+
+  // Remove iframe quickly after print
+  setTimeout(() => {
+    try { document.body.removeChild(iframe); } catch (e) {}
+  }, 3000);
+
+  return { success: true };
 }
 
 export async function openCashDrawer(settings) {
@@ -541,6 +580,7 @@ export async function openCashDrawer(settings) {
 
     const pin = cd.pin || 2;
 
+    // PRIORITY 1: Cloud Agent (silent, no popup)
     if (USE_CLOUD_PRINT) {
       try {
         const cmd = buildDrawerKickCommand(pin);
@@ -555,6 +595,7 @@ export async function openCashDrawer(settings) {
       }
     }
 
+    // PRIORITY 2: Network Printer (silent, no popup - sends bytes directly)
     const printer = s.printer || {};
     if (printer.connection === "network" && printer.address) {
       try {
@@ -565,8 +606,9 @@ export async function openCashDrawer(settings) {
       }
     }
 
+    // PRIORITY 3: Browser print (silent iframe, minimal paper feed)
     const html = buildDrawerHtml(pin);
-    const result = printViaBrowser(html);
+    const result = silentDrawerPrint(html);
     return result;
   } catch (error) {
     console.error("[DRAWER] error:", error);
