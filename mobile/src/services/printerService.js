@@ -484,6 +484,20 @@ export async function printKitchenTicket(args) {
       return { success: false, error: "Kitchen printer disabled." };
     }
 
+    // ✅ If kitchen printer has network address, send PLAIN TEXT (not HTML)
+    if (kp.connection === "network" && kp.address) {
+      try {
+        const text = buildKitchenTicketText(args);
+        await sendToNetworkPrinter(kp.address, kp.port, text);
+        return { success: true, method: "network" };
+      } catch (e) {
+        console.warn("[KP] Network failed, fallback to browser:", e);
+        const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
+        return printViaBrowser(html);
+      }
+    }
+
+    // ✅ Otherwise use browser print
     const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
     return printViaBrowser(html);
   } catch (error) {

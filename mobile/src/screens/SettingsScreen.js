@@ -243,7 +243,7 @@ function KitchenPrinterCard() {
   const setRouting = (next) => save({ kpRouting: { default: routing.default, categories: {}, ...next } });
 
   const updateKP = (id, patch) => setKps(kps.map((k) => (k.id === id ? { ...k, ...patch } : k)));
-  const addKP = () => setKps([...kps, { id: "kp" + Date.now(), name: "Kitchen " + (kps.length + 1), enabled: true, paperSize: "80" }]);
+  const addKP = () => setKps([...kps, { id: "kp" + Date.now(), name: "Kitchen " + (kps.length + 1), enabled: true, connection: "network", paperSize: "80", address: "", port: "9100" }]);
   const removeKP = (id) => setKps(kps.filter((k) => k.id !== id));
 
   const testKP = async (kp) => {
@@ -269,13 +269,13 @@ function KitchenPrinterCard() {
       <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>🍳 {t("kitchenPrinter") || "Kitchen Printer"}</Text>
       
       <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 12, lineHeight: 18 }}>
-        💡 Kitchen tickets print through your browser's default printer. All prints (receipt + kitchen) go to the same printer set as default in Windows.
+        💡 Configure your kitchen printer here. Enter the printer IP address to send kitchen tickets to a separate printer. Receipt prints go to your browser's default printer.
       </Text>
 
       {kps.map((kp) => (
         <View key={kp.id} style={{ borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, padding: 12, marginBottom: 12, backgroundColor: "#F8FAFC" }}>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
-            <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, backgroundColor: "#fff", color: "#0F172A", fontWeight: "bold" }} value={kp.name} onChangeText={(v) => updateKP(kp.id, { name: v })} placeholder="Kitchen Printer Name" />
+            <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, backgroundColor: "#fff", color: "#0F172A", fontWeight: "bold" }} value={kp.name} onChangeText={(v) => updateKP(kp.id, { name: v })} placeholder="Kitchen 1" />
             <TouchableOpacity style={{ backgroundColor: kp.enabled === false ? "#94A3B8" : "#43A047", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }} onPress={() => updateKP(kp.id, { enabled: kp.enabled === false })}>
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>{kp.enabled === false ? "OFF" : "ON"}</Text>
             </TouchableOpacity>
@@ -287,13 +287,47 @@ function KitchenPrinterCard() {
             </TouchableOpacity>
           </View>
           
-          <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            {["network", "browser"].map((c) => (
+              <TouchableOpacity key={c} style={{ flex: 1, backgroundColor: kp.connection === c ? "#43A047" : "#fff", borderWidth: 1, borderColor: kp.connection === c ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 8, alignItems: "center" }} onPress={() => updateKP(kp.id, { connection: c })}>
+                <Text style={{ color: kp.connection === c ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{c === "network" ? "🌐 NETWORK" : "🖥 BROWSER"}</Text>
+              </TouchableOpacity>
+            ))}
             {["58", "80"].map((s) => (
               <TouchableOpacity key={s} style={{ flex: 1, backgroundColor: kp.paperSize === s ? "#43A047" : "#fff", borderWidth: 1, borderColor: kp.paperSize === s ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 8, alignItems: "center" }} onPress={() => updateKP(kp.id, { paperSize: s })}>
                 <Text style={{ color: kp.paperSize === s ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{s}mm</Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {kp.connection === "network" ? (
+            <View>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4, fontWeight: "600" }}>🌐 Kitchen Printer IP & Port:</Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TextInput 
+                  style={{ flex: 2, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} 
+                  value={kp.address || ""} 
+                  onChangeText={(v) => updateKP(kp.id, { address: v })} 
+                  placeholder="192.168.1.100" 
+                  placeholderTextColor="#94A3B8" 
+                />
+                <TextInput 
+                  style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} 
+                  value={kp.port || "9100"} 
+                  onChangeText={(v) => updateKP(kp.id, { port: v })} 
+                  placeholder="9100" 
+                  keyboardType="number-pad" 
+                />
+              </View>
+              <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>
+                💡 Find IP: Print a self-test page from your kitchen printer, or check router's connected devices.
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>
+              🖥 Browser mode: Kitchen tickets print to your system's default printer.
+            </Text>
+          )}
         </View>
       ))}
 
