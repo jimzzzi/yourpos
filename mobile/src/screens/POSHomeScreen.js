@@ -726,13 +726,15 @@ export default function POSHomeScreen() {
       const dv = Number(discountValue || 0);
       const finalDiscount = Math.min(finalSubtotal, discountType === "percent" ? (finalSubtotal * dv) / 100 : dv);
       const afterDiscount = finalSubtotal - finalDiscount;
-      let finalTax, finalTotal;
+      let finalTax, finalTotal, finalSubtotalDisplay;
       if (vatInclusive) {
         finalTotal = afterDiscount;
         finalTax = finalTotal - finalTotal / (1 + taxRate);
+        finalSubtotalDisplay = finalTotal - finalTax; // ✅ UAE STANDARD: Subtotal excl VAT
       } else {
         finalTax = afterDiscount * taxRate;
         finalTotal = afterDiscount + finalTax;
+        finalSubtotalDisplay = afterDiscount; // Subtotal is after discount, before tax
       }
 
       const order = await createOrder({
@@ -790,6 +792,7 @@ export default function POSHomeScreen() {
         loadTables();
       }
 
+            // ========== CASH DRAWER: ONLY on CASH payment, NOT on card ==========
       const cd = settings.cashDrawer || {};
       const isCashPayment = payment && payment.payment_method === "cash";
       if (cd.enabled && cd.autoOnCash !== false && isCashPayment) {
@@ -801,9 +804,9 @@ export default function POSHomeScreen() {
         }
       }
 
-      setCompletedSale({
+            setCompletedSale({
         items: finalCart,
-        subtotal: finalSubtotal,
+        subtotal: finalSubtotalDisplay, // ✅ Use the display subtotal
         tax: finalTax,
         total: finalTotal,
         discount: finalDiscount,
