@@ -271,57 +271,114 @@ export function buildKitchenTicketHtml(args) {
   const voidedItem = a.voidedItem;
   const voidedBy = a.voidedBy || "";
   const voidReason = a.voidReason || "";
-  const is58 = a.paperSize === "58";
-  const paper = is58 ? "58mm" : "80mm";
-  const padding = is58 ? "2mm 3mm" : "2mm 4mm";
-  const now = new Date().toLocaleString();
+  const paper = "80mm";
+  const padding = "3mm 4mm";
+  const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateStr = new Date().toLocaleDateString();
 
   let headerText = "*** NEW ORDER ***";
-  if (type === "ADDITION") headerText = "*** ADDITION ***";
-  if (type === "VOID") headerText = "###  VOID  ###";
+  let headerBg = "#000";
+  let headerColor = "#fff";
+  if (type === "ADDITION") {
+    headerText = "*** ADD ITEMS ***";
+    headerBg = "#000";
+    headerColor = "#fff";
+  }
+  if (type === "VOID") {
+    headerText = "### VOID ITEM ###";
+    headerBg = "#000";
+    headerColor = "#fff";
+  }
 
   let html = "<html><head><title>Kitchen</title><style>";
   html += "@page { size: " + paper + " auto; margin: 0; }";
   html += "html, body { margin: 0; padding: 0; }";
-  html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
-  html += ".header { text-align: center; font-size: 20px; font-weight: 900; letter-spacing: 2px; margin: 4px 0 8px; }";
-  html += ".table-box { text-align: center; font-size: 30px; font-weight: 900; padding: 6px; border: 3px solid #000; margin-bottom: 6px; }";
-  html += ".meta { text-align: center; font-size: 13px; margin-bottom: 6px; }";
-  html += ".item { margin: 6px 0; padding: 4px 0; border-bottom: 2px solid #000; }";
-  html += ".item-name { font-size: 16px; font-weight: 900; }";
-  html += ".item-qty { font-size: 18px; font-weight: 900; margin-right: 6px; }";
-  html += ".modifier { font-size: 13px; font-weight: 900; padding-left: 18px; margin-top: 2px; }";
-  html += ".void-line { text-align: center; font-size: 13px; font-weight: 900; margin: 4px 0; }";
-  html += ".footer { margin-top: 10px; text-align: center; font-size: 12px; border-top: 2px solid #000; padding-top: 6px; }";
+  html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 15px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
+  
+  // Big bold header
+  html += ".header { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 3px; margin: 0 0 8px 0; padding: 8px 0; background: " + headerBg + "; color: " + headerColor + "; border-radius: 4px; }";
+  
+  // Table box - BIG and bold
+  html += ".table-box { text-align: center; font-size: 42px; font-weight: 900; padding: 10px 6px; border: 4px solid #000; margin: 8px 0; letter-spacing: 2px; }";
+  
+  // Meta info (bill number, dining, time)
+  html += ".meta { text-align: center; font-size: 15px; margin: 4px 0; font-weight: bold; }";
+  html += ".meta-row { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; padding: 0 4px; }";
+  
+  // Separator
+  html += ".divider { border-top: 3px dashed #000; margin: 8px 0; }";
+  html += ".divider-thick { border-top: 4px solid #000; margin: 8px 0; }";
+  
+  // Item - BIG and clear
+  html += ".item { margin: 10px 0; padding: 8px 6px; border-bottom: 3px solid #000; }";
+  html += ".item-row { display: flex; align-items: baseline; gap: 8px; }";
+  html += ".item-qty { font-size: 26px; font-weight: 900; min-width: 50px; }";
+  html += ".item-name { font-size: 19px; font-weight: 900; flex: 1; line-height: 1.3; }";
+  html += ".item-desc { font-size: 13px; font-weight: bold; margin-top: 4px; padding-left: 58px; color: #333; }";
+  
+  // Modifier - clear and bold
+  html += ".modifier { font-size: 15px; font-weight: 900; padding-left: 58px; margin-top: 4px; }";
+  html += ".modifier::before { content: '★ '; }";
+  
+  // Void styling
+  html += ".void-line { text-align: center; font-size: 14px; font-weight: 900; margin: 6px 0; }";
+  html += ".void-reason { text-align: center; font-size: 13px; font-weight: bold; margin: 4px 0; padding: 6px; border: 2px solid #000; }";
+  
+  // Footer
+  html += ".footer { margin-top: 12px; text-align: center; font-size: 13px; font-weight: bold; border-top: 3px solid #000; padding-top: 8px; }";
+  html += ".footer-time { font-size: 18px; font-weight: 900; margin-top: 4px; }";
+  
   html += "</style></head><body>";
 
+  // Header banner
   html += '<div class="header">' + escapeHtml(headerText) + "</div>";
 
   if (type === "VOID" && voidedItem) {
     html += '<div class="table-box">' + escapeHtml(table) + "</div>";
     if (billNumber) html += '<div class="meta">Bill #' + escapeHtml(billNumber) + "</div>";
-    html += '<div class="item"><span class="item-qty">1x</span><span class="item-name">' + escapeHtml(voidedItem.name) + "</span></div>";
+    html += '<div class="divider"></div>';
+    html += '<div class="item"><div class="item-row"><span class="item-qty">1x</span><span class="item-name">' + escapeHtml(voidedItem.name) + "</span></div></div>";
     if (voidedItem.modifiers && voidedItem.modifiers.length) {
-      voidedItem.modifiers.forEach((m) => { html += '<div class="modifier">+ ' + escapeHtml(m.name) + "</div>"; });
+      voidedItem.modifiers.forEach((m) => { html += '<div class="modifier">' + escapeHtml(m.name) + "</div>"; });
     }
-    if (voidReason) html += '<div class="void-line">Reason: ' + escapeHtml(voidReason) + "</div>";
-    if (voidedBy) html += '<div class="void-line">By: ' + escapeHtml(voidedBy) + "</div>";
+    if (voidReason) html += '<div class="void-reason">Reason: ' + escapeHtml(voidReason) + "</div>";
+    if (voidedBy) html += '<div class="void-line">Voided by: ' + escapeHtml(voidedBy) + "</div>";
   } else {
+    // Table name BIG
     html += '<div class="table-box">' + escapeHtml(table) + "</div>";
-    if (billNumber) html += '<div class="meta">Bill #' + escapeHtml(billNumber) + "</div>";
-    if (a.dining) html += '<div class="meta">' + escapeHtml(a.dining === "takeaway" ? "TAKEAWAY" : "DINE-IN") + "</div>";
 
+    // Bill info row
+    if (billNumber || a.dining) {
+      html += '<div class="meta-row">';
+      if (billNumber) html += '<span>Bill #' + escapeHtml(billNumber) + "</span>";
+      if (a.dining) html += '<span>' + escapeHtml(a.dining === "takeaway" ? "🥡 TAKEAWAY" : "🍽 DINE-IN") + "</span>";
+      html += "</div>";
+    }
+
+    html += '<div class="divider-thick"></div>';
+
+    // Items - BIG and clear
     items.forEach((item) => {
-      html += '<div class="item"><span class="item-qty">' + (item.quantity || 1) + "x</span><span class=\"item-name\">" + escapeHtml(item.name) + "</span></div>";
-      if (item.description) html += '<div class="modifier">' + escapeHtml(item.description) + "</div>";
+      html += '<div class="item">';
+      html += '<div class="item-row">';
+      html += '<span class="item-qty">' + (item.quantity || 1) + "x</span>";
+      html += '<span class="item-name">' + escapeHtml(item.name) + "</span>";
+      html += "</div>";
+      if (item.description) html += '<div class="item-desc">' + escapeHtml(item.description) + "</div>";
+      html += "</div>";
       (item.modifiers || []).forEach((m) => {
-        html += '<div class="modifier">* ' + escapeHtml(m.name) + "</div>";
+        html += '<div class="modifier">' + escapeHtml(m.name) + "</div>";
       });
       if (item.notes) html += '<div class="modifier">NOTE: ' + escapeHtml(item.notes) + "</div>";
     });
   }
 
-  html += '<div class="footer">' + escapeHtml(now) + "</div>";
+  // Footer with time
+  html += '<div class="footer">';
+  html += '<div>' + escapeHtml(dateStr) + "</div>";
+  html += '<div class="footer-time">⏰ ' + escapeHtml(now) + "</div>";
+  html += "</div>";
+
   html += "</body></html>";
   return html;
 }
