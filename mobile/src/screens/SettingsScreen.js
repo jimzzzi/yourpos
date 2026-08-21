@@ -673,11 +673,45 @@ export default function SettingsScreen() {
               <Text style={[styles.optionText, !printer.enabled && styles.optionTextDanger]}>{t("off")}</Text>
             </TouchableOpacity>
           </View>
+
+          <Text style={styles.cardLabel}>{t("connection")}</Text>
+          <View style={styles.optionRow}>
+            {["network", "browser"].map((type) => (
+              <TouchableOpacity key={type} style={[styles.optionButton, printer.connection === type && styles.optionButtonActive]} onPress={() => setPrinter({ connection: type })}>
+                <Text style={[styles.optionText, printer.connection === type && styles.optionTextActive]}>
+                  {type === "network" ? "🌐 NETWORK" : "🖥 BROWSER"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {printer.connection === "network" ? (
+            <View>
+              <Text style={styles.cardLabel}>{t("ipAddress")}</Text>
+              <TextInput style={styles.input} value={printer.address || ""} onChangeText={(v) => setPrinter({ address: v })} placeholder="192.168.1.100" />
+              <Text style={styles.cardLabel}>{t("port")}</Text>
+              <TextInput style={styles.input} value={printer.port || "9100"} onChangeText={(v) => setPrinter({ port: v })} placeholder="9100" keyboardType="number-pad" />
+            </View>
+          ) : (
+            <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 4, marginBottom: 8 }}>
+              🖥 Browser mode: Prints to your Windows default printer (USB receipt printer).
+            </Text>
+          )}
+
+          <Text style={styles.cardLabel}>{t("paperSize")}</Text>
+          <View style={styles.optionRow}>
+            <TouchableOpacity style={[styles.optionButton, printer.paperSize !== "58" && styles.optionButtonActive]} onPress={() => setPrinter({ paperSize: "80" })}>
+              <Text style={[styles.optionText, printer.paperSize !== "58" && styles.optionTextActive]}>80mm</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.optionButton, printer.paperSize === "58" && styles.optionButtonActive]} onPress={() => setPrinter({ paperSize: "58" })}>
+              <Text style={[styles.optionText, printer.paperSize === "58" && styles.optionTextActive]}>58mm</Text>
+            </TouchableOpacity>
+          </View>
+
           <TouchableOpacity style={styles.testButton} onPress={handleTestPrint}>
             <Text style={styles.testButtonText}>{t("testPrint")}</Text>
           </TouchableOpacity>
         </View>
-
         <Text style={styles.sectionTitle}>{t("receiptDesign")}</Text>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>{t("headerLogo")}</Text>

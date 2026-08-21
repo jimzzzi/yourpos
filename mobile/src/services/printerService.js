@@ -139,8 +139,8 @@ function buildReceiptParts(args) {
     totals.push(formatLine(getLbl("discount", a.settings, "Discount"), "-" + fmt(a.discount, a.settings), width, isArabic));
   }
   totals.push(formatLine(
-    vatInclusive 
-      ? getLbl("subtotalExcl", a.settings, "Subtotal (excl. VAT)") 
+    vatInclusive
+      ? getLbl("subtotalExcl", a.settings, "Subtotal (excl. VAT)")
       : getLbl("subtotal", a.settings, "Subtotal"),
     fmt(a.subtotal, a.settings),
     width,
@@ -165,10 +165,10 @@ function buildReceiptParts(args) {
   if (payment) {
     (payment.payments || []).forEach((p) => {
       const method = String(p.method || "").toLowerCase();
-      const methodLabel = method === "cash" 
-        ? getLbl("cash", a.settings, "CASH") 
-        : method === "card" 
-        ? getLbl("card", a.settings, "CARD") 
+      const methodLabel = method === "cash"
+        ? getLbl("cash", a.settings, "CASH")
+        : method === "card"
+        ? getLbl("card", a.settings, "CARD")
         : method.toUpperCase();
       pays.push(formatLine(methodLabel, fmt(p.amount, a.settings), width, isArabic));
     });
@@ -432,11 +432,26 @@ function printViaBrowser(html) {
 }
 
 async function sendToNetworkPrinter(address, port, textBody) {
-  await fetch("http://" + address + ":" + (port || 9100) + "/print", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: textBody,
-  });
+  const url = "http://" + address + ":" + (port || 9100);
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: textBody,
+    });
+    return;
+  } catch (e) {
+    try {
+      await fetch(url + "/print", {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: textBody,
+      });
+      return;
+    } catch (e2) {
+      throw new Error("Cannot reach printer at " + address + ":" + (port || 9100));
+    }
+  }
 }
 
 async function sendToCloudAgent(printerName, textContent) {
@@ -464,6 +479,20 @@ export async function printReceipt(args) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
     }
 
+    // ✅ If receipt printer is NETWORK, send plain text to its IP
+    if (printer.connection === "network" && printer.address) {
+      try {
+        const text = buildReceiptText(args);
+        await sendToNetworkPrinter(printer.address, printer.port, text);
+        return { success: true, method: "network" };
+      } catch (e) {
+        console.warn("[RECEIPT] Network failed, fallback to browser:", e);
+        const html = buildReceiptHtml(args);
+        return printViaBrowser(html);
+      }
+    }
+
+    // ✅ Browser mode: prints to Windows default printer (USB receipt)
     const html = buildReceiptHtml(args);
     return printViaBrowser(html);
   } catch (error) {
@@ -484,7 +513,7 @@ export async function printKitchenTicket(args) {
       return { success: false, error: "Kitchen printer disabled." };
     }
 
-    // ✅ If kitchen printer has network address, send PLAIN TEXT (not HTML)
+    // ✅ If kitchen printer is NETWORK, send plain text to its IP
     if (kp.connection === "network" && kp.address) {
       try {
         const text = buildKitchenTicketText(args);
@@ -497,7 +526,7 @@ export async function printKitchenTicket(args) {
       }
     }
 
-    // ✅ Otherwise use browser print
+    // ✅ Browser mode: prints to Windows default printer
     const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
     return printViaBrowser(html);
   } catch (error) {
