@@ -277,17 +277,11 @@ export function buildKitchenTicketHtml(args) {
   const dateStr = new Date().toLocaleDateString();
 
   let headerText = "*** NEW ORDER ***";
-  let headerBg = "#000";
-  let headerColor = "#fff";
   if (type === "ADDITION") {
     headerText = "*** ADD ITEMS ***";
-    headerBg = "#000";
-    headerColor = "#fff";
   }
   if (type === "VOID") {
     headerText = "### VOID ITEM ###";
-    headerBg = "#000";
-    headerColor = "#fff";
   }
 
   let html = "<html><head><title>Kitchen</title><style>";
@@ -296,7 +290,7 @@ export function buildKitchenTicketHtml(args) {
   html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 15px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
   
   // Big bold header
-  html += ".header { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 3px; margin: 0 0 8px 0; padding: 8px 0; background: " + headerBg + "; color: " + headerColor + "; border-radius: 4px; }";
+    html += ".header { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 3px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
   
   // Table box - BIG and bold
   html += ".table-box { text-align: center; font-size: 42px; font-weight: 900; padding: 10px 6px; border: 4px solid #000; margin: 8px 0; letter-spacing: 2px; }";
