@@ -69,7 +69,6 @@ const AR_LABELS = {
   copy: "★ نسخة من الفاتورة ★",
 };
 
-// ========== FIXED: Read receiptLanguage from root settings, not nested ==========
 function getLbl(key, settings, defaultEn) {
   const lang = settings && settings.receiptLanguage;
   if (lang === "ar" && AR_LABELS[key]) {
@@ -119,6 +118,7 @@ function buildReceiptParts(args) {
   });
   itemsLines.push(divider(width));
 
+  // ========== UAE STANDARD: Subtotal (excl VAT) → VAT → Total (incl VAT) ==========
   const totals = [];
   if (a.discount && Number(a.discount) > 0) {
     totals.push(leftRight(getLbl("discount", a.settings, "Discount"), "-" + fmt(a.discount, a.settings), width));
@@ -199,7 +199,6 @@ export function buildReceiptHtml(args) {
   const logoHeader = p.rs.headerLogo ? '<img src="' + p.rs.headerLogo + '" class="logo" />' : "";
   const logoFooter = p.rs.footerLogo ? '<img src="' + p.rs.footerLogo + '" class="logo" />' : "";
 
-  // ========== FIXED: Read receiptLanguage from root settings ==========
   const lang = args && args.settings && args.settings.receiptLanguage;
   const isArabic = lang === "ar";
   const dirAttr = isArabic ? ' dir="rtl"' : '';
@@ -513,7 +512,7 @@ export async function printKitchenTicket(args) {
   }
 }
 
-// ========== CASH DRAWER KICK (SILENT - NO POPUP, NO PRINT) ==========
+// ========== CASH DRAWER KICK (SILENT - NO POPUP, NO EXTRA PRINT) ==========
 function buildDrawerKickCommand(pin) {
   const m = pin === 5 ? 1 : 0;
   return "\x1B\x70" + String.fromCharCode(m) + "\x19\xFA";
@@ -533,7 +532,6 @@ function buildDrawerHtml(pin) {
   );
 }
 
-// Silent print - no dialog, auto-print and close
 function silentDrawerPrint(html) {
   if (typeof document === "undefined") {
     return { success: false, error: "Printing not supported." };
@@ -561,7 +559,6 @@ function silentDrawerPrint(html) {
     }
   }, 200);
 
-  // Remove iframe quickly after print
   setTimeout(() => {
     try { document.body.removeChild(iframe); } catch (e) {}
   }, 3000);
@@ -580,7 +577,6 @@ export async function openCashDrawer(settings) {
 
     const pin = cd.pin || 2;
 
-    // PRIORITY 1: Cloud Agent (silent, no popup)
     if (USE_CLOUD_PRINT) {
       try {
         const cmd = buildDrawerKickCommand(pin);
@@ -595,7 +591,6 @@ export async function openCashDrawer(settings) {
       }
     }
 
-    // PRIORITY 2: Network Printer (silent, no popup - sends bytes directly)
     const printer = s.printer || {};
     if (printer.connection === "network" && printer.address) {
       try {
@@ -606,7 +601,6 @@ export async function openCashDrawer(settings) {
       }
     }
 
-    // PRIORITY 3: Browser print (silent iframe, minimal paper feed)
     const html = buildDrawerHtml(pin);
     const result = silentDrawerPrint(html);
     return result;
