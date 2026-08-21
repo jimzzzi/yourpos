@@ -305,23 +305,47 @@ function KitchenPrinterCard() {
   const setRouting = (next) => save({ kpRouting: { default: routing.default, categories: {}, ...next } });
 
   const updateKP = (id, patch) => setKps(kps.map((k) => (k.id === id ? { ...k, ...patch } : k)));
-  const addKP = () => setKps([...kps, { id: "kp" + Date.now(), name: "Kitchen " + (kps.length + 1), enabled: true, connection: "browser", paperSize: "80" }]);
+  const addKP = () => setKps([...kps, { id: "kp" + Date.now(), name: "Kitchen " + (kps.length + 1), enabled: true, connection: "network", paperSize: "80", address: "", port: "9100" }]);
   const removeKP = (id) => setKps(kps.filter((k) => k.id !== id));
 
+  // ✅ FIXED: Show helpful instructions instead of broken detection
   const detectPrinters = async () => {
     setDetecting(true);
     try {
+      // Try to get printer list from backend (may not work on remote servers)
       const mod = await import("../api/client");
-      const api = mod.api || mod.default;
-      const res = await api.get("/printer/list");
-      setAvailablePrinters(res.data.printers || []);
-      if (res.data.printers && res.data.printers.length > 0) {
-        Alert.alert("✅", `Found ${res.data.printers.length} printer(s)`);
+      const apiClient = mod.api || mod.default;
+      const res = await apiClient.get("/printer/list");
+      if (res.data && res.data.printers && res.data.printers.length > 0) {
+        setAvailablePrinters(res.data.printers);
+        Alert.alert("✅", `Found ${res.data.printers.length} printer(s). Select one below.`);
       } else {
-        Alert.alert("⚠️", "No printers detected. You can still type the name manually.");
+        Alert.alert(
+          "ℹ️ Printer Setup",
+          "To use a different printer for kitchen:\n\n" +
+          "1. NETWORK PRINTER (Recommended):\n" +
+          "   Enter the printer's IP address (e.g., 192.168.1.100)\n" +
+          "   and port (usually 9100)\n\n" +
+          "2. USB PRINTER:\n" +
+          "   Type the exact printer name as shown in Windows\n" +
+          "   (e.g., 'EPSON TM-T82')\n\n" +
+          "💡 Tip: Check your printer's IP in Windows:\n" +
+          "   Settings → Printers → Your Printer → Properties"
+        );
       }
     } catch (e) {
-      Alert.alert("❌", "Could not detect printers: " + e.message);
+      Alert.alert(
+        "ℹ️ Printer Setup",
+        "To use a different printer for kitchen:\n\n" +
+        "1. NETWORK PRINTER (Recommended):\n" +
+        "   Enter the printer's IP address (e.g., 192.168.1.100)\n" +
+        "   and port (usually 9100)\n\n" +
+        "2. USB PRINTER:\n" +
+        "   Type the exact printer name as shown in Windows\n" +
+        "   (e.g., 'EPSON TM-T82')\n\n" +
+        "💡 Tip: Check your printer's IP in Windows:\n" +
+        "   Settings → Printers → Your Printer → Properties"
+      );
     } finally {
       setDetecting(false);
     }
@@ -348,6 +372,10 @@ function KitchenPrinterCard() {
   return (
     <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
       <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>🍳 {t("kitchenPrinter") || "Kitchen Printer"}</Text>
+      
+      <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 12, lineHeight: 18 }}>
+        💡 Set a DIFFERENT printer for kitchen tickets. Use NETWORK connection with the printer's IP address for best results.
+      </Text>
 
       <TouchableOpacity
         style={{ backgroundColor: "#0EA5E9", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 14 }}
@@ -355,28 +383,38 @@ function KitchenPrinterCard() {
         disabled={detecting}
       >
         <Text style={{ color: "#fff", fontWeight: "bold" }}>
-          {detecting ? "Detecting..." : "🔍 Detect Installed Printers"}
+          {detecting ? "Checking..." : "🔍 How to Setup Printer"}
         </Text>
       </TouchableOpacity>
+
+      {availablePrinters.length > 0 ? (
+        <View style={{ marginBottom: 12, padding: 10, backgroundColor: "#F0FDF4", borderRadius: 8, borderWidth: 1, borderColor: "#86EFAC" }}>
+          <Text style={{ fontSize: 13, fontWeight: "bold", color: "#166534", marginBottom: 6 }}>✅ Detected Printers:</Text>
+          {availablePrinters.map((printerName, idx) => (
+            <Text key={idx} style={{ fontSize: 12, color: "#334155", marginBottom: 2 }}>• {printerName}</Text>
+          ))}
+        </View>
+      ) : null}
 
       {kps.map((kp) => (
         <View key={kp.id} style={{ borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, padding: 12, marginBottom: 12, backgroundColor: "#F8FAFC" }}>
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}>
-            <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, backgroundColor: "#fff", color: "#0F172A", fontWeight: "bold" }} value={kp.name} onChangeText={(v) => updateKP(kp.id, { name: v })} />
+            <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, backgroundColor: "#fff", color: "#0F172A", fontWeight: "bold" }} value={kp.name} onChangeText={(v) => updateKP(kp.id, { name: v })} placeholder="Kitchen Printer Name" />
             <TouchableOpacity style={{ backgroundColor: kp.enabled === false ? "#94A3B8" : "#43A047", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 }} onPress={() => updateKP(kp.id, { enabled: kp.enabled === false })}>
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>{kp.enabled === false ? "OFF" : "ON"}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={{ backgroundColor: "#0EA5E9", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10 }} onPress={() => testKP(kp)}>
-              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🖨</Text>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🖨 Test</Text>
             </TouchableOpacity>
             <TouchableOpacity style={{ backgroundColor: "#EF4444", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 10 }} onPress={() => removeKP(kp.id)}>
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✕</Text>
             </TouchableOpacity>
           </View>
+          
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-            {["browser", "network"].map((c) => (
+            {["network", "browser"].map((c) => (
               <TouchableOpacity key={c} style={{ flex: 1, backgroundColor: kp.connection === c ? "#43A047" : "#fff", borderWidth: 1, borderColor: kp.connection === c ? "#43A047" : "#CBD5E1", borderRadius: 8, paddingVertical: 8, alignItems: "center" }} onPress={() => updateKP(kp.id, { connection: c })}>
-                <Text style={{ color: kp.connection === c ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{c.toUpperCase()}</Text>
+                <Text style={{ color: kp.connection === c ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{c === "network" ? "🌐 NETWORK" : "🖥 BROWSER"}</Text>
               </TouchableOpacity>
             ))}
             {["58", "80"].map((s) => (
@@ -388,40 +426,42 @@ function KitchenPrinterCard() {
 
           {kp.connection === "network" ? (
             <View>
-              {availablePrinters.length > 0 ? (
-                <View style={{ marginBottom: 8 }}>
-                  <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Select Printer:</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
-                    {availablePrinters.map((printerName, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={{
-                          backgroundColor: kp.address === printerName ? "#43A047" : "#fff",
-                          borderWidth: 1,
-                          borderColor: kp.address === printerName ? "#43A047" : "#CBD5E1",
-                          borderRadius: 8,
-                          paddingHorizontal: 12,
-                          paddingVertical: 8,
-                          marginRight: 8
-                        }}
-                        onPress={() => updateKP(kp.id, { address: printerName })}
-                      >
-                        <Text style={{ color: kp.address === printerName ? "#fff" : "#334155", fontWeight: "bold", fontSize: 12 }}>
-                          {printerName}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              ) : null}
-
-              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Or type manually:</Text>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4, fontWeight: "600" }}>🌐 Printer IP Address & Port:</Text>
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <TextInput style={{ flex: 2, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} value={kp.address || ""} onChangeText={(v) => updateKP(kp.id, { address: v })} placeholder="Printer name or IP" placeholderTextColor="#94A3B8" />
-                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} value={kp.port || ""} onChangeText={(v) => updateKP(kp.id, { port: v })} placeholder="9100" keyboardType="number-pad" />
+                <TextInput 
+                  style={{ flex: 2, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} 
+                  value={kp.address || ""} 
+                  onChangeText={(v) => updateKP(kp.id, { address: v })} 
+                  placeholder="192.168.1.100" 
+                  placeholderTextColor="#94A3B8" 
+                />
+                <TextInput 
+                  style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} 
+                  value={kp.port || "9100"} 
+                  onChangeText={(v) => updateKP(kp.id, { port: v })} 
+                  placeholder="9100" 
+                  keyboardType="number-pad" 
+                />
               </View>
+              <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>
+                💡 Find your printer's IP: Windows Settings → Printers → Your Printer → Properties → Ports
+              </Text>
             </View>
-          ) : null}
+          ) : (
+            <View>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4, fontWeight: "600" }}>🖥 Printer Name (as shown in Windows):</Text>
+              <TextInput 
+                style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff", color: "#0F172A" }} 
+                value={kp.address || ""} 
+                onChangeText={(v) => updateKP(kp.id, { address: v })} 
+                placeholder="EPSON TM-T82" 
+                placeholderTextColor="#94A3B8" 
+              />
+              <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 4 }}>
+                💡 Type the exact name from: Windows Settings → Printers & Scanners
+              </Text>
+            </View>
+          )}
         </View>
       ))}
 
