@@ -383,45 +383,84 @@ export function buildKitchenTicketText(args) {
   const items = a.items || [];
   const table = a.table || "-";
   const billNumber = a.billNumber ? String(a.billNumber).padStart(6, "0") : null;
-  const width = 32;
+  const voidedItem = a.voidedItem;
+  const voidedBy = a.voidedBy || "";
+  const voidReason = a.voidReason || "";
+  const width = 42;
+
+  const thickLine = "=".repeat(width);
+  const thinLine = "-".repeat(width);
+  const dashedLine = "- - - - - - - - - - - - - - - - - - - - -";
+
+  let headerText = "*** NEW ORDER ***";
+  if (type === "ADDITION") headerText = "*** ADD ITEMS ***";
+  if (type === "VOID") headerText = "### VOID ITEM ###";
 
   let lines = [];
 
-  if (type === "VOID") {
-    lines.push(centerText("### VOID ###", width));
-    lines.push(centerText(table, width));
+  // Header with border (matches HTML design)
+  lines.push(thickLine);
+  lines.push(centerText(headerText, width));
+  lines.push(thickLine);
+  lines.push("");
+
+  // Table name BIG with border
+  lines.push(thickLine);
+  lines.push(centerText(table, width));
+  lines.push(thickLine);
+  lines.push("");
+
+  if (type === "VOID" && voidedItem) {
     if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
-    lines.push(divider(width, "="));
-    if (a.voidedItem) {
-      lines.push("1x " + a.voidedItem.name);
-      if (a.voidedItem.modifiers) {
-        a.voidedItem.modifiers.forEach(m => lines.push("  + " + m.name));
-      }
-    }
-    if (a.voidReason) lines.push("Reason: " + a.voidReason);
-    if (a.voidedBy) lines.push("By: " + a.voidedBy);
-  } else {
-    let header = "*** NEW ORDER ***";
-    if (type === "ADDITION") header = "*** ADDITION ***";
-    lines.push(centerText(header, width));
     lines.push("");
-    lines.push(centerText(table, width));
+    lines.push(thinLine);
+    lines.push("1x  " + String(voidedItem.name || "").toUpperCase());
+    if (voidedItem.modifiers && voidedItem.modifiers.length) {
+      voidedItem.modifiers.forEach((m) => {
+        lines.push("    * " + String(m.name || "").toUpperCase());
+      });
+    }
+    lines.push(thinLine);
+    if (voidReason) {
+      lines.push("");
+      lines.push("REASON: " + voidReason.toUpperCase());
+    }
+    if (voidedBy) {
+      lines.push("VOIDED BY: " + voidedBy.toUpperCase());
+    }
+  } else {
+    // Bill info
     if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
     if (a.dining) lines.push(centerText(a.dining === "takeaway" ? "TAKEAWAY" : "DINE-IN", width));
-    lines.push(divider(width, "="));
+    lines.push("");
+    lines.push(thinLine);
 
-    items.forEach(item => {
-      lines.push((item.quantity || 1) + "x " + item.name);
-      if (item.description) lines.push("   " + item.description);
-      if (item.modifiers) {
-        item.modifiers.forEach(m => lines.push("   * " + m.name));
+    // Items - BIG and clear
+    items.forEach((item) => {
+      const qty = String(item.quantity || 1) + "x";
+      const name = String(item.name || "Item").toUpperCase();
+      lines.push(qty.padEnd(5) + name);
+      if (item.description) {
+        lines.push("     " + String(item.description).toUpperCase());
       }
-      if (item.notes) lines.push("   NOTE: " + item.notes);
+      (item.modifiers || []).forEach((m) => {
+        lines.push("     * " + String(m.name || "").toUpperCase());
+      });
+      if (item.notes) {
+        lines.push("     NOTE: " + String(item.notes).toUpperCase());
+      }
+      lines.push(thinLine);
     });
   }
 
-  lines.push(divider(width, "="));
-  lines.push(centerText(new Date().toLocaleTimeString(), width));
+  // Footer with time
+  lines.push("");
+  const now = new Date();
+  const dateStr = now.toLocaleDateString();
+  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  lines.push(centerText(dateStr, width));
+  lines.push(centerText(timeStr, width));
+  lines.push(thickLine);
 
   return lines.join("\n");
 }
