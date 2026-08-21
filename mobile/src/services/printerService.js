@@ -479,20 +479,8 @@ export async function printReceipt(args) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
     }
 
-    // ✅ If receipt printer is NETWORK, send plain text to its IP
-    if (printer.connection === "network" && printer.address) {
-      try {
-        const text = buildReceiptText(args);
-        await sendToNetworkPrinter(printer.address, printer.port, text);
-        return { success: true, method: "network" };
-      } catch (e) {
-        console.warn("[RECEIPT] Network failed, fallback to browser:", e);
-        const html = buildReceiptHtml(args);
-        return printViaBrowser(html);
-      }
-    }
-
-    // ✅ Browser mode: prints to Windows default printer (USB receipt)
+    // ✅ Receipt ONLY uses browser print (Windows default = USB receipt printer)
+    // NO network printing for receipts - only browser
     const html = buildReceiptHtml(args);
     return printViaBrowser(html);
   } catch (error) {
