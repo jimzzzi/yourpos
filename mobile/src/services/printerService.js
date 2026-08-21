@@ -15,6 +15,22 @@ function leftRight(left, right, width) {
   return l + " ".repeat(space) + r;
 }
 
+function formatLine(label, value, width, isArabic) {
+  if (isArabic) {
+    const l = String(value || "");
+    const r = String(label || "");
+    const space = width - l.length - r.length;
+    if (space <= 0) return (l + " " + r).slice(0, width);
+    return l + " ".repeat(space) + r;
+  } else {
+    const l = String(label || "");
+    const r = String(value || "");
+    const space = width - l.length - r.length;
+    if (space <= 0) return (l + " " + r).slice(0, width);
+    return l + " ".repeat(space) + r;
+  }
+}
+
 function divider(width, char = "-") {
   return char.repeat(width);
 }
@@ -38,7 +54,6 @@ function getReceiptSettings(settings, store) {
   return { ...r, headerLines, footerLines };
 }
 
-// ========== DECIMALS HELPER ==========
 function getDecimals(settings) {
   const d = settings && settings.decimals;
   const n = Number(d);
@@ -49,7 +64,6 @@ function fmt(value, settings) {
   return Number(value || 0).toFixed(getDecimals(settings));
 }
 
-// ========== ARABIC LABELS FOR RECEIPTS ==========
 const AR_LABELS = {
   subtotal: "المجموع الفرعي",
   subtotalExcl: "المجموع (بدون ضريبة)",
@@ -86,6 +100,7 @@ function buildReceiptParts(args) {
   const width = rs.paperSize === "58" ? 26 : 36;
   const vatInclusive = Boolean(store && store.tax_inclusive);
   const rate = Number(store && store.tax_rate ? store.tax_rate : 0);
+  const isArabic = a.settings && a.settings.receiptLanguage === "ar";
 
   const originalDate = a.createdAt ? new Date(a.createdAt).toLocaleString() : new Date().toLocaleString();
   const dateLine = originalDate;
@@ -109,32 +124,34 @@ function buildReceiptParts(args) {
       itemsLines.push(" + " + String(m.name || "").slice(0, Math.max(8, width - 4)));
     });
     itemsLines.push(
-      leftRight(
+      formatLine(
         (item.quantity || 0) + " x " + fmt(item.price, a.settings),
         fmt((item.price || 0) * (item.quantity || 0), a.settings),
-        width
+        width,
+        isArabic
       )
     );
   });
   itemsLines.push(divider(width));
 
-  // ========== UAE STANDARD: Subtotal (excl VAT) → VAT → Total (incl VAT) ==========
   const totals = [];
   if (a.discount && Number(a.discount) > 0) {
-    totals.push(leftRight(getLbl("discount", a.settings, "Discount"), "-" + fmt(a.discount, a.settings), width));
+    totals.push(formatLine(getLbl("discount", a.settings, "Discount"), "-" + fmt(a.discount, a.settings), width, isArabic));
   }
-  totals.push(leftRight(
+  totals.push(formatLine(
     vatInclusive 
       ? getLbl("subtotalExcl", a.settings, "Subtotal (excl. VAT)") 
       : getLbl("subtotal", a.settings, "Subtotal"),
     fmt(a.subtotal, a.settings),
-    width
+    width,
+    isArabic
   ));
   if (rs.showTax !== false) {
-    totals.push(leftRight(
+    totals.push(formatLine(
       getLbl("vat", a.settings, "VAT") + " " + rate + "%",
       fmt(a.tax, a.settings),
-      width
+      width,
+      isArabic
     ));
   }
   const totalLabel = vatInclusive
@@ -153,11 +170,11 @@ function buildReceiptParts(args) {
         : method === "card" 
         ? getLbl("card", a.settings, "CARD") 
         : method.toUpperCase();
-      pays.push(leftRight(methodLabel, fmt(p.amount, a.settings), width));
+      pays.push(formatLine(methodLabel, fmt(p.amount, a.settings), width, isArabic));
     });
     if (payment.payment_method === "cash") {
-      pays.push(leftRight(getLbl("tendered", a.settings, "Tendered"), fmt(payment.amount_tendered, a.settings), width));
-      pays.push(leftRight(getLbl("change", a.settings, "Change"), fmt(payment.change_due, a.settings), width));
+      pays.push(formatLine(getLbl("tendered", a.settings, "Tendered"), fmt(payment.amount_tendered, a.settings), width, isArabic));
+      pays.push(formatLine(getLbl("change", a.settings, "Change"), fmt(payment.change_due, a.settings), width, isArabic));
     }
   }
 
@@ -167,6 +184,7 @@ function buildReceiptParts(args) {
 export function buildReceiptText(args) {
   const p = buildReceiptParts(args);
   const lines = [];
+  const isArabic = args && args.settings && args.settings.receiptLanguage === "ar";
 
   if (args && args.duplicate) {
     lines.push(centerText(getLbl("copy", args.settings, "★ COPY / DUPLICATE BILL ★"), p.width));
@@ -182,7 +200,7 @@ export function buildReceiptText(args) {
   lines.push(divider(p.width));
   p.itemsLines.forEach((l) => lines.push(l));
   p.totals.forEach((l) => lines.push(l));
-  lines.push(leftRight(p.totalLabel, p.totalValue, p.width));
+  lines.push(formatLine(p.totalLabel, p.totalValue, p.width, isArabic));
   p.pays.forEach((l) => lines.push(l));
   if (p.footerLines.length > 0) {
     lines.push(divider(p.width));
@@ -446,26 +464,7 @@ export async function printReceipt(args) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
     }
 
-    if (USE_CLOUD_PRINT) {
-      const text = buildReceiptText(args);
-      const cloudRes = await sendToCloudAgent(settings.cloudPrinterName || "default", text);
-      if (cloudRes.success) return cloudRes;
-      console.warn("[PRINT] Cloud agent failed, falling back to browser.");
-    }
-
     const html = buildReceiptHtml(args);
-
-    if (printer.connection === "network" && printer.address) {
-      try {
-        await sendToNetworkPrinter(printer.address, printer.port, buildReceiptText(args));
-        return { success: true };
-      } catch (error) {
-        const fallback = printViaBrowser(html);
-        if (fallback.success) return { success: true, warning: "Network printer unreachable - used browser print instead." };
-        return { success: false, error: "Printer unreachable at " + printer.address + ":" + (printer.port || 9100) };
-      }
-    }
-
     return printViaBrowser(html);
   } catch (error) {
     console.error("[PRINT] error:", error);
@@ -485,26 +484,7 @@ export async function printKitchenTicket(args) {
       return { success: false, error: "Kitchen printer disabled." };
     }
 
-    if (USE_CLOUD_PRINT) {
-      const text = buildKitchenTicketText(args);
-      const cloudRes = await sendToCloudAgent(settings.cloudPrinterName || "default", text);
-      if (cloudRes.success) return cloudRes;
-      console.warn("[KP] Cloud agent failed, falling back to browser.");
-    }
-
     const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
-
-    if (kp.connection === "network" && kp.address) {
-      try {
-        await sendToNetworkPrinter(kp.address, kp.port, html);
-        return { success: true };
-      } catch (error) {
-        const fallback = printViaBrowser(html);
-        if (fallback.success) return { success: true, warning: "Network KP unreachable - browser used." };
-        return { success: false, error: "KP unreachable." };
-      }
-    }
-
     return printViaBrowser(html);
   } catch (error) {
     console.error("[KP] error:", error);
@@ -512,7 +492,6 @@ export async function printKitchenTicket(args) {
   }
 }
 
-// ========== CASH DRAWER KICK (SILENT - NO POPUP, NO EXTRA PRINT) ==========
 function buildDrawerKickCommand(pin) {
   const m = pin === 5 ? 1 : 0;
   return "\x1B\x70" + String.fromCharCode(m) + "\x19\xFA";
@@ -576,41 +555,14 @@ export async function openCashDrawer(settings) {
     }
 
     const pin = cd.pin || 2;
-
-    if (USE_CLOUD_PRINT) {
-      try {
-        const cmd = buildDrawerKickCommand(pin);
-        await api.post("/print/jobs", {
-          printer_name: cd.printerName || s.cloudPrinterName || "default",
-          content: cmd,
-          type: "raw",
-        });
-        return { success: true, method: "cloud" };
-      } catch (e) {
-        console.warn("[DRAWER] Cloud failed, fallback:", e);
-      }
-    }
-
-    const printer = s.printer || {};
-    if (printer.connection === "network" && printer.address) {
-      try {
-        await sendToNetworkPrinter(printer.address, printer.port, buildDrawerKickCommand(pin));
-        return { success: true, method: "network" };
-      } catch (e) {
-        console.warn("[DRAWER] Network failed, fallback to browser:", e);
-      }
-    }
-
     const html = buildDrawerHtml(pin);
-    const result = silentDrawerPrint(html);
-    return result;
+    return silentDrawerPrint(html);
   } catch (error) {
     console.error("[DRAWER] error:", error);
     return { success: false, error: error.message };
   }
 }
 
-// ========== QR ORDERING STICKER PRINTER ==========
 function qrStyleHtml() {
   return (
     "@page { size: 80mm auto; margin: 0; }" +
