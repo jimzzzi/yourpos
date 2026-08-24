@@ -24,6 +24,34 @@ const orderLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// ========== SAFE: Get currency symbol from store settings ==========
+async function getCurrencySymbol(storeId, fallbackCurrency) {
+  try {
+    // Try to get settings from stores table (JSONB column)
+    const settingsRes = await db.query(
+      "SELECT settings FROM stores WHERE id = $1",
+      [storeId]
+    );
+    
+    if (settingsRes.rows[0] && settingsRes.rows[0].settings) {
+      const settings = typeof settingsRes.rows[0].settings === "string"
+        ? JSON.parse(settingsRes.rows[0].settings)
+        : settingsRes.rows[0].settings;
+      
+      if (settings && settings.currencySymbol) {
+        return settings.currencySymbol;
+      }
+    }
+    
+    // Fallback to currency field
+    return fallbackCurrency || "AED";
+  } catch (error) {
+    // If anything fails, just return the fallback - NEVER break the app
+    console.log("Currency symbol fallback:", error.message);
+    return fallbackCurrency || "AED";
+  }
+}
+
 // ========== PUBLIC: Get menu for a QR table ==========
 router.get("/menu", menuLimiter, async (req, res) => {
   try {
@@ -119,11 +147,15 @@ router.get("/menu", menuLimiter, async (req, res) => {
         variants: variantsByProduct[p.id] || [],
       }));
 
+    // Get currency symbol safely (won't break if settings don't exist)
+    const currencySymbol = await getCurrencySymbol(store.id, store.currency);
+
     res.json({
       store: {
         id: store.id,
         name: store.name,
-        currency: store.currency || "$",
+        currency: store.currency || "AED",
+        currency_symbol: currencySymbol,
         tax_rate: Number(store.tax_rate || 0),
         tax_inclusive: Boolean(store.tax_inclusive),
       },
@@ -239,6 +271,7 @@ router.post("/order", orderLimiter, async (req, res) => {
     res.status(500).json({ error: "Failed to place order." });
   }
 });
+
 // ========== POS: Get pending QR orders (AUTHENTICATED) ==========
 router.get("/pending", authenticateToken, async (req, res) => {
   try {
@@ -296,4 +329,5 @@ router.post("/order/:id/reject", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to reject order." });
   }
 });
+
 module.exports = router;
