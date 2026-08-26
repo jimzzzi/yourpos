@@ -4,7 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Image,
 } from "react-native";
 import { inventoryApi } from "../api/inventory";
-import { api } from "../api/client"; // Make sure api is imported
+import { api } from "../api/client";
 import { useI18n } from "../i18n/I18nContext";
 
 const emptyVariant = { id: null, name: "", price: "", stock_quantity: "", sku: "", barcode: "" };
@@ -18,13 +18,15 @@ export default function ProductFormModal({ visible, product, categories, onClose
   const [trackStock, setTrackStock] = useState(false);
   const [isTimeBased, setIsTimeBased] = useState(false);
   const [timeUnitMinutes, setTimeUnitMinutes] = useState("");
+  
+  // ⚖️ NEW: Weight-based state
+  const [soldByWeight, setSoldByWeight] = useState(false);
+  
   const [variants, setVariants] = useState([{ ...emptyVariant }]);
   const [newCategoryMode, setNewCategoryMode] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  
-  // NEW: Track upload state
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -38,8 +40,12 @@ export default function ProductFormModal({ visible, product, categories, onClose
       setImageUrl(product.image_url || "");
       setDescription(product.description || "");
       setTrackStock(Boolean(product.track_stock));
-	  setIsTimeBased(Boolean(product.is_time_based));
+      setIsTimeBased(Boolean(product.is_time_based));
       setTimeUnitMinutes(product.time_unit_minutes ? String(product.time_unit_minutes) : "");
+      
+      // ⚖️ Load weight-based setting
+      setSoldByWeight(Boolean(product.sold_by_weight));
+      
       const existing = (product.variants || []).map((v) => ({
         id: v.id,
         name: v.name === "Default" ? "" : v.name || "",
@@ -55,8 +61,9 @@ export default function ProductFormModal({ visible, product, categories, onClose
       setImageUrl("");
       setDescription("");
       setTrackStock(false);
-	  setIsTimeBased(false);
+      setIsTimeBased(false);
       setTimeUnitMinutes("");
+      setSoldByWeight(false);
       setVariants([{ ...emptyVariant }]);
     }
   }, [visible, product]);
@@ -74,7 +81,6 @@ export default function ProductFormModal({ visible, product, categories, onClose
     });
   };
 
-  // NEW: Cloudinary Upload Logic (Replaces Base64 Canvas)
   const handleUpload = () => {
     if (Platform.OS !== "web") {
       Alert.alert(t("upload"), t("imageUrl"));
@@ -90,13 +96,12 @@ export default function ProductFormModal({ visible, product, categories, onClose
       try {
         setUploading(true);
         const formData = new FormData();
-        formData.append("image", file); // Web standard File object
+        formData.append("image", file);
         
         const response = await api.post("/upload/image", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
         
-        // Save the Cloudinary URL!
         setImageUrl(response.data.url);
       } catch (err) {
         Alert.alert("❌ Upload Failed", err.response?.data?.error || err.message || "Could not upload image.");
@@ -189,11 +194,12 @@ export default function ProductFormModal({ visible, product, categories, onClose
     const payload = {
       name: name.trim(),
       category_id: categoryId,
-      image_url: imageUrl.trim(), // This is now a short Cloudinary URL!
+      image_url: imageUrl.trim(),
       description: description.trim(),
       track_stock: trackStock,
-	  is_time_based: isTimeBased,
+      is_time_based: isTimeBased,
       time_unit_minutes: isTimeBased && timeUnitMinutes ? Number(timeUnitMinutes) : null,
+      sold_by_weight: soldByWeight,
       variants: variants.map((variant) => ({
         id: variant.id || undefined,
         name: variant.name.trim() || "Default",
@@ -231,7 +237,7 @@ export default function ProductFormModal({ visible, product, categories, onClose
 
           <ScrollView style={styles.flex} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
             <Text style={styles.label}>{t("productName")}</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="T-Shirt" />
+            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Burger" />
 
             <Text style={styles.label}>{t("description")}</Text>
             <TextInput
@@ -252,7 +258,8 @@ export default function ProductFormModal({ visible, product, categories, onClose
               </TouchableOpacity>
             </View>
             <Text style={styles.hintText}>{trackStock ? t("stockHintOn") : t("stockHintOff")}</Text>
-			<Text style={styles.label}>⏱ Time-Based Billing</Text>
+
+            <Text style={styles.label}>⏱ Time-Based Billing</Text>
             <View style={styles.categoryRow}>
               <TouchableOpacity style={[styles.categoryChip, isTimeBased && styles.categoryChipActive]} onPress={() => setIsTimeBased(true)}>
                 <Text style={[styles.categoryChipText, isTimeBased && styles.categoryChipTextActive]}>⏱ Time-Based</Text>
@@ -268,6 +275,22 @@ export default function ProductFormModal({ visible, product, categories, onClose
                 <Text style={styles.hintText}>e.g. 60 = charge price every 60 minutes</Text>
               </View>
             ) : null}
+
+            {/* ⚖️ NEW: Sold by Weight Section */}
+            <Text style={styles.label}>⚖️ Weight-Based Item</Text>
+            <View style={styles.categoryRow}>
+              <TouchableOpacity style={[styles.categoryChip, soldByWeight && styles.categoryChipActive]} onPress={() => setSoldByWeight(true)}>
+                <Text style={[styles.categoryChipText, soldByWeight && styles.categoryChipTextActive]}>⚖️ By Weight</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.categoryChip, !soldByWeight && styles.categoryChipActive]} onPress={() => setSoldByWeight(false)}>
+                <Text style={[styles.categoryChipText, !soldByWeight && styles.categoryChipTextActive]}>Per Item</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.hintText}>
+              {soldByWeight 
+                ? "Price is per KG. Cashier will enter weight when selling." 
+                : "Regular item — fixed price per piece."}
+            </Text>
 
             <Text style={styles.label}>{t("category")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow}>
@@ -309,7 +332,6 @@ export default function ProductFormModal({ visible, product, categories, onClose
 
             <Text style={styles.label}>{t("itemPhoto")}</Text>
             <View style={{ flexDirection: "row", gap: 10 }}>
-              {/* NEW: Upload button handles loading state */}
               <TouchableOpacity 
                 style={[styles.uploadButton, { flex: 1, opacity: uploading ? 0.6 : 1 }]} 
                 onPress={handleUpload} 
@@ -350,7 +372,10 @@ export default function ProductFormModal({ visible, product, categories, onClose
                 />
                 <View style={styles.variantRow}>
                   <View style={styles.variantHalf}>
-                    <Text style={styles.smallLabel}>{t("price")}</Text>
+                    {/* ⚖️ Dynamic price label based on weight mode */}
+                    <Text style={styles.smallLabel}>
+                      {soldByWeight ? "💰 Price per KG" : t("price")}
+                    </Text>
                     <TextInput style={styles.input} value={variant.price} onChangeText={(value) => updateVariant(index, "price", value)} keyboardType="decimal-pad" placeholder="9.99" />
                   </View>
                   <View style={styles.variantHalf}>
