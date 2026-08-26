@@ -7,6 +7,7 @@ import { backofficeApi } from "../api/backoffice";
 import { printReceipt } from "../services/printerService";
 import { telegramApi } from "../api/telegram";
 import { uploadImage } from "../services/uploadService";
+import { PREDEFINED_FORMATS, getFormatList, parseScaleBarcode } from "../services/barcodeParser";
 
 function BusinessHoursCard() {
   const ctx = useSettings();
@@ -190,6 +191,192 @@ function CashDrawerCard() {
           >
             <Text style={{ color: "#fff", fontWeight: "bold" }}>🧪 Test Open Drawer</Text>
           </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ⚖️ SCALE BARCODE SETTINGS CARD
+function ScaleBarcodeCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const save = ctx.updateSettings || (() => {});
+
+  const scale = settings.scale || { enabled: false, formatKey: "ean13_t02", custom: null };
+  const setScale = (patch) => save({ scale: { ...scale, ...patch } });
+
+  const [testBarcode, setTestBarcode] = useState("");
+  const [testResult, setTestResult] = useState(null);
+
+  const formatList = getFormatList();
+  const isCustom = scale.formatKey === "custom";
+
+  const handleTest = () => {
+    if (!testBarcode.trim()) {
+      setTestResult({ error: "Enter a barcode to test" });
+      return;
+    }
+    let format;
+    if (isCustom && scale.custom) {
+      format = scale.custom;
+    } else {
+      format = PREDEFINED_FORMATS[scale.formatKey];
+    }
+    if (!format) {
+      setTestResult({ error: "No format selected" });
+      return;
+    }
+    const result = parseScaleBarcode(testBarcode.trim(), format);
+    if (result) {
+      setTestResult({ success: true, ...result });
+    } else {
+      setTestResult({ error: "Barcode doesn't match this format (length should be " + format.length + ")" });
+    }
+  };
+
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>⚖️ Scale Barcode Settings</Text>
+
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: scale.enabled ? "#43A047" : "#fff", borderWidth: 2, borderColor: scale.enabled ? "#43A047" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+          onPress={() => setScale({ enabled: true })}
+        >
+          <Text style={{ color: scale.enabled ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: !scale.enabled ? "#EF4444" : "#fff", borderWidth: 2, borderColor: !scale.enabled ? "#EF4444" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }}
+          onPress={() => setScale({ enabled: false })}
+        >
+          <Text style={{ color: !scale.enabled ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 12 }}>
+        When ON, scanned barcodes from weighing scales will be parsed automatically to get item, weight, and price.
+      </Text>
+
+      {scale.enabled ? (
+        <View>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F172A", marginBottom: 6 }}>📋 Barcode Format</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            {formatList.map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={{
+                  borderWidth: 1,
+                  borderColor: scale.formatKey === f.key ? "#43A047" : "#CBD5E1",
+                  backgroundColor: scale.formatKey === f.key ? "#43A047" : "#fff",
+                  borderRadius: 8,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  marginRight: 6,
+                }}
+                onPress={() => setScale({ formatKey: f.key })}
+              >
+                <Text style={{ color: scale.formatKey === f.key ? "#fff" : "#334155", fontSize: 11, fontWeight: "bold" }}>
+                  {f.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={{
+                borderWidth: 1,
+                borderColor: isCustom ? "#F59E0B" : "#CBD5E1",
+                backgroundColor: isCustom ? "#F59E0B" : "#fff",
+                borderRadius: 8,
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+              }}
+              onPress={() => setScale({ formatKey: "custom" })}
+            >
+              <Text style={{ color: isCustom ? "#fff" : "#334155", fontSize: 11, fontWeight: "bold" }}>
+                🔧 Custom
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {isCustom ? (
+            <View style={{ borderWidth: 1, borderColor: "#F59E0B", borderRadius: 10, padding: 12, marginBottom: 12, backgroundColor: "#FFFBEB" }}>
+              <Text style={{ fontSize: 14, fontWeight: "bold", color: "#92400E", marginBottom: 8 }}>🔧 Custom Format Builder</Text>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 6 }}>Barcode Length:</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                {[8, 13, 18].map((len) => (
+                  <TouchableOpacity
+                    key={len}
+                    style={{
+                      flex: 1,
+                      backgroundColor: (scale.custom?.length || 13) === len ? "#F59E0B" : "#fff",
+                      borderWidth: 1,
+                      borderColor: (scale.custom?.length || 13) === len ? "#F59E0B" : "#CBD5E1",
+                      borderRadius: 8,
+                      paddingVertical: 8,
+                      alignItems: "center",
+                    }}
+                    onPress={() => setScale({ custom: { ...(scale.custom || {}), length: len } })}
+                  >
+                    <Text style={{ color: (scale.custom?.length || 13) === len ? "#fff" : "#64748B", fontWeight: "bold" }}>{len} digits</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Item Number: Start & Length</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.item?.start ?? 0)} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), item: { ...(scale.custom?.item || {}), start: parseInt(v) || 0 } } })} placeholder="Start" keyboardType="number-pad" />
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.item?.length ?? 5)} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), item: { ...(scale.custom?.item || {}), length: parseInt(v) || 5 } } })} placeholder="Length" keyboardType="number-pad" />
+              </View>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Weight: Start, Length, Decimals</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.weight?.start ?? "")} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), weight: { ...(scale.custom?.weight || {}), start: parseInt(v) || 0 } } })} placeholder="Start" keyboardType="number-pad" />
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.weight?.length ?? "")} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), weight: { ...(scale.custom?.weight || {}), length: parseInt(v) || 0 } } })} placeholder="Length" keyboardType="number-pad" />
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.weight?.decimals ?? "")} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), weight: { ...(scale.custom?.weight || {}), decimals: parseInt(v) || 0 } } })} placeholder="Dec" keyboardType="number-pad" />
+              </View>
+              <Text style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Price (optional): Start, Length, Decimals</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.price?.start ?? "")} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), price: { ...(scale.custom?.price || {}), start: parseInt(v) || 0 } } })} placeholder="Start" keyboardType="number-pad" />
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.price?.length ?? "")} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), price: { ...(scale.custom?.price || {}), length: parseInt(v) || 0 } } })} placeholder="Length" keyboardType="number-pad" />
+                <TextInput style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, backgroundColor: "#fff" }} value={String(scale.custom?.price?.decimals ?? "")} onChangeText={(v) => setScale({ custom: { ...(scale.custom || {}), price: { ...(scale.custom?.price || {}), decimals: parseInt(v) || 0 } } })} placeholder="Dec" keyboardType="number-pad" />
+              </View>
+            </View>
+          ) : null}
+
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F172A", marginBottom: 6 }}>🧪 Test Barcode</Text>
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+            <TextInput
+              style={{ flex: 1, borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 14, backgroundColor: "#fff" }}
+              value={testBarcode}
+              onChangeText={setTestBarcode}
+              placeholder="e.g. 2700012007500"
+              keyboardType="number-pad"
+            />
+            <TouchableOpacity style={{ backgroundColor: "#0F172A", borderRadius: 8, paddingHorizontal: 16, justifyContent: "center" }} onPress={handleTest}>
+              <Text style={{ color: "#fff", fontWeight: "bold" }}>Test</Text>
+            </TouchableOpacity>
+          </View>
+
+          {testResult ? (
+            <View style={{
+              backgroundColor: testResult.error ? "#FEF2F2" : "#F0FDF4",
+              borderWidth: 1,
+              borderColor: testResult.error ? "#FCA5A5" : "#86EFAC",
+              borderRadius: 8,
+              padding: 12,
+            }}>
+              {testResult.error ? (
+                <Text style={{ color: "#DC2626", fontSize: 13, fontWeight: "bold" }}>❌ {testResult.error}</Text>
+              ) : (
+                <View>
+                  <Text style={{ color: "#16A34A", fontSize: 13, fontWeight: "bold", marginBottom: 4 }}>✅ Parsed Successfully!</Text>
+                  <Text style={{ fontSize: 12, color: "#334155" }}>Department: {testResult.department || "N/A"}</Text>
+                  <Text style={{ fontSize: 12, color: "#334155" }}>Item ID: {testResult.itemId}</Text>
+                  {testResult.weight !== null && <Text style={{ fontSize: 12, color: "#334155" }}>Weight: {testResult.weight.toFixed(3)} KG</Text>}
+                  {testResult.price !== null && <Text style={{ fontSize: 12, color: "#334155" }}>Total Price: {testResult.price.toFixed(2)}</Text>}
+                  {testResult.unitPrice !== null && <Text style={{ fontSize: 12, color: "#334155" }}>Unit Price/KG: {testResult.unitPrice.toFixed(2)}</Text>}
+                </View>
+              )}
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -659,6 +846,9 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>💰 Cash Drawer</Text>
         <CashDrawerCard />
+
+        <Text style={styles.sectionTitle}>⚖️ Scale Barcode</Text>
+        <ScaleBarcodeCard />
 
         <Text style={styles.sectionTitle}>{t("kitchenPrinter") || "Kitchen Printer"}</Text>
         <KitchenPrinterCard />
