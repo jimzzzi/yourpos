@@ -85,8 +85,8 @@ router.get("/products", async (req, res) => {
     const storeId = req.user.storeId;
     const search = toNullIfEmpty(req.query.search);
     const params = [storeId];
-    let productQuery =
-            "SELECT p.id, p.name, p.image_url, p.description, p.track_stock, p.category_id, p.is_time_based, p.time_unit_minutes, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.store_id = $1 AND p.is_available = true";
+        let productQuery =
+            "SELECT p.id, p.name, p.image_url, p.description, p.track_stock, p.sold_by_weight, p.category_id, p.is_time_based, p.time_unit_minutes, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id WHERE p.store_id = $1 AND p.is_available = true";
     if (search) {
       params.push("%" + search + "%");
       productQuery +=
@@ -115,12 +115,13 @@ router.get("/products", async (req, res) => {
         });
       });
     }
-    const products = productsResult.rows.map((row) => ({
+      const products = productsResult.rows.map((row) => ({
       id: row.id,
       name: row.name,
       image_url: row.image_url,
       description: row.description,
       track_stock: Boolean(row.track_stock),
+      sold_by_weight: Boolean(row.sold_by_weight),
       is_time_based: Boolean(row.is_time_based),
       time_unit_minutes: row.time_unit_minutes ? Number(row.time_unit_minutes) : null,
       category_id: row.category_id,
@@ -159,9 +160,9 @@ router.post("/products", async (req, res) => {
       return res.status(400).json({ error: validation.error });
     }
     await client.query("BEGIN");
-    const productResult = await client.query(
-      "INSERT INTO products (store_id, category_id, name, image_url, description, track_stock, is_time_based, time_unit_minutes, is_available) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING id",
-      [storeId, req.body.category_id || null, name, toNullIfEmpty(req.body.image_url), toNullIfEmpty(req.body.description), parseTrackStock(req.body.track_stock), Boolean(req.body.is_time_based), req.body.time_unit_minutes ? Number(req.body.time_unit_minutes) : null]
+      const productResult = await client.query(
+      "INSERT INTO products (store_id, category_id, name, image_url, description, track_stock, sold_by_weight, is_time_based, time_unit_minutes, is_available) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true) RETURNING id",
+      [storeId, req.body.category_id || null, name, toNullIfEmpty(req.body.image_url), toNullIfEmpty(req.body.description), parseTrackStock(req.body.track_stock), Boolean(req.body.sold_by_weight), Boolean(req.body.is_time_based), req.body.time_unit_minutes ? Number(req.body.time_unit_minutes) : null]
     );
     const productId = productResult.rows[0].id;
     for (const variant of validation.variants) {
@@ -207,8 +208,8 @@ router.put("/products/:id", async (req, res) => {
     }
     await client.query("BEGIN");
     
-    await client.query(
-      "UPDATE products SET name = $1, image_url = $2, description = $3, track_stock = $4, category_id = $5, is_time_based = $6, time_unit_minutes = $7, updated_at = NOW() WHERE id = $8 AND store_id = $9",
+        await client.query(
+      "UPDATE products SET name = $1, image_url = $2, description = $3, track_stock = $4, category_id = $5, is_time_based = $6, time_unit_minutes = $7, sold_by_weight = $8, updated_at = NOW() WHERE id = $9 AND store_id = $10",
       [
         name,
         toNullIfEmpty(req.body.image_url),
@@ -217,6 +218,7 @@ router.put("/products/:id", async (req, res) => {
         req.body.category_id || null,
         Boolean(req.body.is_time_based),
         req.body.time_unit_minutes ? Number(req.body.time_unit_minutes) : null,
+        Boolean(req.body.sold_by_weight),
         productId,
         storeId
       ]
