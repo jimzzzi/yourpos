@@ -149,9 +149,9 @@ export default function CustomerTakeawayScreen({ storeId }) {
       setOrderPlaced(data || { order_id: null });
       setOrderStatus("pending");
       setCart([]); setNote(""); setCustomerName(""); setCustomerPhone(""); setCartOpen(false);
-    } catch (e) {
+        } catch (e) {
       console.error("Place order error:", e);
-      Alert.alert("Order Failed", e.message || "Could not place your order. Please try again or ask our staff.");
+      window.alert("ORDER ERROR: " + (e.message || "Unknown error. Check F12 console."));
     } finally {
       setPlacing(false);
     }
