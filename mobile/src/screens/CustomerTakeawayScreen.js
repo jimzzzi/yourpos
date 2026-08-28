@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Image, TextInput, Modal } from "react-native";
-import { api } from "../api/client";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Image, TextInput, Modal, Alert } from "react-native";
 
 const ACCENT = "#E8590C";
+const BACKEND_URL = "https://yourpos-backend.onrender.com"; // Replace with your actual backend URL
 
 export default function CustomerTakeawayScreen({ storeId }) {
   const [loading, setLoading] = useState(true);
@@ -33,13 +33,16 @@ export default function CustomerTakeawayScreen({ storeId }) {
     try {
       setLoading(true);
       setError(null);
-      const res = await api.get("/takeaway/menu", { params: { store: storeId } });
-      setStore(res.data.store || null);
-      setProducts(res.data.products || []);
-      setCategories(res.data.categories || []);
-      setModifiers(res.data.modifiers || []);
+      const res = await fetch(`${BACKEND_URL}/api/takeaway/menu?store=${storeId}`);
+      if (!res.ok) throw new Error("Failed to load menu");
+      const data = await res.json();
+      setStore(data.store || null);
+      setProducts(data.products || []);
+      setCategories(data.categories || []);
+      setModifiers(data.modifiers || []);
     } catch (e) {
       setError("We couldn't load the menu. Please check your connection.");
+      console.error("Menu load error:", e);
     } finally {
       setLoading(false);
     }
@@ -52,9 +55,14 @@ export default function CustomerTakeawayScreen({ storeId }) {
     if (!orderPlaced || !orderPlaced.order_id) return;
     const t = setInterval(async () => {
       try {
-        const r = await api.get("/takeaway/order/" + orderPlaced.order_id + "/status");
-        setOrderStatus(r.data.status || "pending");
-      } catch (e) {}
+        const r = await fetch(`${BACKEND_URL}/api/takeaway/order/${orderPlaced.order_id}/status`);
+        if (r.ok) {
+          const data = await r.json();
+          setOrderStatus(data.status || "pending");
+        }
+      } catch (e) {
+        console.error("Status poll error:", e);
+      }
     }, 5000);
     return () => clearInterval(t);
   }, [orderPlaced]);
@@ -116,22 +124,34 @@ export default function CustomerTakeawayScreen({ storeId }) {
     if (cart.length === 0 || placing) return;
     setPlacing(true);
     try {
-      const res = await api.post("/takeaway/order", {
-        store_id: storeId,
-        customer_name: customerName.trim() || "Guest",
-        customer_phone: customerPhone.trim(),
-        note: note.trim(),
-        items: cart.map((i) => ({
-          variant_id: i.variant_id,
-          quantity: i.quantity,
-          modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifier_id })),
-        })),
+      const res = await fetch(`${BACKEND_URL}/api/takeaway/order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: storeId,
+          customer_name: customerName.trim() || "Guest",
+          customer_phone: customerPhone.trim(),
+          note: note.trim(),
+          items: cart.map((i) => ({
+            variant_id: i.variant_id,
+            quantity: i.quantity,
+            modifiers: (i.modifiers || []).map((m) => ({ modifier_id: m.modifier_id })),
+          })),
+        }),
       });
-      setOrderPlaced(res.data || { order_id: null });
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errData.error || "Failed to place order");
+      }
+      
+      const data = await res.json();
+      setOrderPlaced(data || { order_id: null });
       setOrderStatus("pending");
       setCart([]); setNote(""); setCustomerName(""); setCustomerPhone(""); setCartOpen(false);
     } catch (e) {
-      setError("Could not place your order. Please try again or ask our staff.");
+      console.error("Place order error:", e);
+      Alert.alert("Order Failed", e.message || "Could not place your order. Please try again or ask our staff.");
     } finally {
       setPlacing(false);
     }
