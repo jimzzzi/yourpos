@@ -168,9 +168,9 @@ router.post("/order", orderLimiter, async (req, res) => {
       order_number: String(insertRes.rows[0].id).padStart(4, "0"),
       message: "Order received! Pay at the counter when you pick up.",
     });
-  } catch (error) {
+    } catch (error) {
     console.error("Takeaway order error:", error);
-    res.status(500).json({ error: "Failed to place order." });
+    res.status(500).json({ error: "DB ERROR: " + error.message });
   }
 });
 
