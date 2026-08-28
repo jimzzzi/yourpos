@@ -1,0 +1,246 @@
+const express = require("express");
+const rateLimit = require("express-rate-limit");
+const db = require("../db");
+const authenticateToken = require("../middleware/auth");
+
+const router = express.Router();
+
+const menuLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: { error: "Too many requests. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
+const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, message: { error: "Too many orders. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
+
+// ========== PUBLIC: Takeaway menu ==========
+router.get("/menu", menuLimiter, async (req, res) => {
+  try {
+    const storeId = parseInt(req.query.store);
+    if (!storeId || Number.isNaN(storeId)) return res.status(400).json({ error: "Invalid store code." });
+
+    const storeRes = await db.query("SELECT id, name, currency, tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
+    if (storeRes.rows.length === 0) return res.status(404).json({ error: "Store not found." });
+    const store = storeRes.rows[0];
+
+    // Currency symbol (safe fallback)
+    let currencySymbol = store.currency || "AED";
+    try {
+      const sRes = await db.query("SELECT settings FROM stores WHERE id = $1", [storeId]);
+      if (sRes.rows[0] && sRes.rows[0].settings) {
+        const s = typeof sRes.rows[0].settings === "string" ? JSON.parse(sRes.rows[0].settings) : sRes.rows[0].settings;
+        if (s && s.currencySymbol) currencySymbol = s.currencySymbol;
+      }
+    } catch (e) {}
+
+    const catsRes = await db.query("SELECT id, name FROM categories WHERE store_id = $1 ORDER BY name ASC", [storeId]);
+
+    // Exclude weight items (customer can't weigh remotely)
+    const productsRes = await db.query(
+      `SELECT p.id, p.name, p.description, p.image_url, p.category_id
+       FROM products p
+       WHERE p.store_id = $1 AND p.is_available = true AND COALESCE(p.sold_by_weight, false) = false
+       ORDER BY p.name ASC`,
+      [storeId]
+    );
+
+    const productIds = productsRes.rows.map((p) => p.id);
+    const variantsByProduct = {};
+    if (productIds.length > 0) {
+      const variantsRes = await db.query(
+        "SELECT id, product_id, name, price FROM variants WHERE product_id = ANY($1) AND is_available = true ORDER BY id ASC",
+        [productIds]
+      );
+      variantsRes.rows.forEach((v) => {
+        if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
+        variantsByProduct[v.product_id].push({ id: v.id, name: v.name, price: Number(v.price || 0) });
+      });
+    }
+
+    let modifiers = [];
+    try {
+      const modsRes = await db.query("SELECT id, name, price, category_ids FROM modifiers WHERE store_id = $1 AND is_available = true ORDER BY name ASC", [storeId]);
+      modifiers = modsRes.rows.map((m) => ({ id: m.id, name: m.name, price: Number(m.price || 0), category_ids: m.category_ids || [] }));
+    } catch (e) {}
+
+    const products = productsRes.rows
+      .filter((p) => variantsByProduct[p.id] && variantsByProduct[p.id].length > 0)
+      .map((p) => ({
+        id: p.id, name: p.name, description: p.description, image_url: p.image_url,
+        category_id: p.category_id, variants: variantsByProduct[p.id] || [],
+      }));
+
+    res.json({
+      store: {
+        id: store.id, name: store.name,
+        currency: store.currency || "AED",
+        currency_symbol: currencySymbol,
+        tax_rate: Number(store.tax_rate || 0),
+        tax_inclusive: Boolean(store.tax_inclusive),
+      },
+      categories: catsRes.rows,
+      products,
+      modifiers,
+    });
+  } catch (error) {
+    console.error("Takeaway menu error:", error);
+    res.status(500).json({ error: "Failed to load menu." });
+  }
+});
+
+// ========== PUBLIC: Place takeaway order (prices validated server-side) ==========
+router.post("/order", orderLimiter, async (req, res) => {
+  try {
+    const storeId = parseInt(req.body.store_id);
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    const customerName = String(req.body.customer_name || "Guest").slice(0, 100);
+    const customerPhone = String(req.body.customer_phone || "").slice(0, 30);
+    const note = String(req.body.note || "").slice(0, 200);
+    const customerIp = req.ip || "unknown";
+
+    if (!storeId || Number.isNaN(storeId)) return res.status(400).json({ error: "Invalid store." });
+    if (items.length === 0) return res.status(400).json({ error: "Cart is empty." });
+    if (items.length > 30) return res.status(400).json({ error: "Too many items." });
+
+    const storeRes = await db.query("SELECT id, tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
+    if (storeRes.rows.length === 0) return res.status(404).json({ error: "Store not found." });
+    const store = storeRes.rows[0];
+
+    // Validate & recompute prices server-side (never trust client)
+    const cleanItems = [];
+    let subtotal = 0;
+    for (const raw of items) {
+      const variantId = parseInt(raw.variant_id);
+      const qty = Math.max(1, Math.min(50, parseInt(raw.quantity) || 1));
+      const mods = Array.isArray(raw.modifiers) ? raw.modifiers.slice(0, 10) : [];
+      if (!variantId || Number.isNaN(variantId)) continue;
+
+      const vRes = await db.query(
+        `SELECT v.id, v.name, v.price, p.name AS product_name, p.id AS product_id, p.category_id
+         FROM variants v JOIN products p ON p.id = v.product_id
+         WHERE v.id = $1 AND p.store_id = $2 AND v.is_available = true AND p.is_available = true AND COALESCE(p.sold_by_weight, false) = false`,
+        [variantId, storeId]
+      );
+      if (vRes.rows.length === 0) continue;
+      const v = vRes.rows[0];
+
+      let unitPrice = Number(v.price || 0);
+      const cleanMods = [];
+      for (const m of mods) {
+        const modId = parseInt(m.modifier_id || m.id);
+        if (!modId) continue;
+        const mRes = await db.query("SELECT id, name, price FROM modifiers WHERE id = $1 AND store_id = $2 AND is_available = true", [modId, storeId]);
+        if (mRes.rows.length > 0) {
+          cleanMods.push({ modifier_id: mRes.rows[0].id, name: mRes.rows[0].name, price: Number(mRes.rows[0].price || 0) });
+          unitPrice += Number(mRes.rows[0].price || 0);
+        }
+      }
+
+      subtotal += unitPrice * qty;
+      cleanItems.push({
+        variant_id: v.id,
+        product_id: v.product_id,
+        category_id: v.category_id,
+        name: v.product_name + (v.name && v.name !== "Default" ? " (" + v.name + ")" : ""),
+        price: unitPrice,
+        quantity: qty,
+        modifiers: cleanMods,
+      });
+    }
+
+    if (cleanItems.length === 0) return res.status(400).json({ error: "No valid items in cart." });
+
+    const taxRate = Number(store.tax_rate || 0) / 100;
+    let tax, total;
+    if (store.tax_inclusive) {
+      total = subtotal;
+      tax = total - total / (1 + taxRate);
+    } else {
+      tax = subtotal * taxRate;
+      total = subtotal + tax;
+    }
+
+    const insertRes = await db.query(
+      `INSERT INTO takeaway_orders (store_id, customer_name, customer_phone, note, items, subtotal, tax, total, status, customer_ip)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+       RETURNING id, created_at`,
+      [storeId, customerName, customerPhone, note, JSON.stringify(cleanItems), subtotal, tax, total, customerIp]
+    );
+
+    res.status(201).json({
+      success: true,
+      order_id: insertRes.rows[0].id,
+      order_number: String(insertRes.rows[0].id).padStart(4, "0"),
+      message: "Order received! Pay at the counter when you pick up.",
+    });
+  } catch (error) {
+    console.error("Takeaway order error:", error);
+    res.status(500).json({ error: "Failed to place order." });
+  }
+});
+
+// ========== PUBLIC: Customer checks order status ==========
+router.get("/order/:id/status", async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT id, status, total, customer_name, created_at, accepted_at, paid_at FROM takeaway_orders WHERE id = $1",
+      [req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "Order not found." });
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get status." });
+  }
+});
+
+// ========== POS: List active takeaway orders (AUTH) ==========
+router.get("/orders", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT * FROM takeaway_orders WHERE store_id = $1 AND status IN ('pending', 'accepted') ORDER BY created_at ASC LIMIT 50",
+      [req.user.storeId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get takeaway orders error:", error);
+    res.status(500).json({ error: "Failed to fetch takeaway orders." });
+  }
+});
+
+// ========== POS: Accept (AUTH) ==========
+router.put("/orders/:id/accept", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      "UPDATE takeaway_orders SET status = 'accepted', accepted_by = $1, accepted_at = NOW() WHERE id = $2 AND store_id = $3 AND status = 'pending' RETURNING id",
+      [req.user.name || "Staff", req.params.id, req.user.storeId]
+    );
+    if (result.rows.length === 0) return res.status(400).json({ error: "Order not found or already accepted." });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to accept order." });
+  }
+});
+
+// ========== POS: Complete after payment (AUTH) ==========
+router.put("/orders/:id/complete", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      "UPDATE takeaway_orders SET status = 'completed', paid_at = NOW(), payment_method = $1 WHERE id = $2 AND store_id = $3 RETURNING id",
+      [req.body.payment_method || "cash", req.params.id, req.user.storeId]
+    );
+    if (result.rows.length === 0) return res.status(400).json({ error: "Order not found." });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to complete order." });
+  }
+});
+
+// ========== POS: Cancel (AUTH) ==========
+router.put("/orders/:id/cancel", authenticateToken, async (req, res) => {
+  try {
+    await db.query(
+      "UPDATE takeaway_orders SET status = 'cancelled' WHERE id = $1 AND store_id = $2 AND status IN ('pending', 'accepted')",
+      [req.params.id, req.user.storeId]
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to cancel order." });
+  }
+});
+
+module.exports = router;
