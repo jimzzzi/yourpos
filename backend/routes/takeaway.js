@@ -6,7 +6,7 @@ const authenticateToken = require("../middleware/auth");
 const router = express.Router();
 
 const menuLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: { error: "Too many requests. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
-const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, message: { error: "Too many orders. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
+const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 100, message: { error: "Too many orders. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
 
 // ========== PUBLIC: Takeaway menu ==========
 router.get("/menu", menuLimiter, async (req, res) => {
