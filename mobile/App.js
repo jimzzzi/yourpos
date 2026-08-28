@@ -19,6 +19,7 @@ import LanguageScreen from "./src/screens/LanguageScreen";
 import UsersScreen from "./src/screens/UsersScreen";
 import { useOfflineSync } from "./src/hooks/useOfflineSync";
 import CustomerMenuScreen from "./src/screens/CustomerMenuScreen";
+import CustomerTakeawayScreen from "./src/screens/CustomerTakeawayScreen"; // 🥡 NEW
 
 function SplashLoading() {
   return (
@@ -223,11 +224,26 @@ function RootNavigator() {
     return null;
   }, []);
 
+  // 🥡 Read Takeaway param - no login needed for customers
+  const takeawayStoreId = React.useMemo(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const takeawayParam = params.get("takeaway");
+      if (takeawayParam) return parseInt(takeawayParam);
+    }
+    return null;
+  }, []);
+
   if (loading) return <SplashLoading />;
   
   // QR menu is PUBLIC - customers don't need to login!
   if (qrTableId) {
     return <CustomerMenuScreen tableId={qrTableId} />;
+  }
+
+  // 🥡 Takeaway menu is PUBLIC - customers don't need to login!
+  if (takeawayStoreId) {
+    return <CustomerTakeawayScreen storeId={takeawayStoreId} />;
   }
   
   if (!user) return <AuthScreen />;
