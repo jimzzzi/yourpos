@@ -87,6 +87,7 @@ app.use("/api/cash", cashRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/tables", tablesRoutes);
 app.use("/api/qr", qrRoutes);
+app.use("/api/takeaway", require("./routes/takeaway"));
 app.use("/api/reports", require("./routes/reports"));
 app.use("/api/telegram", require("./routes/telegram"));
 app.use("/api/users", require("./routes/users"));
