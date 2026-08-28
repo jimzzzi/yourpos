@@ -16,6 +16,7 @@ import ModifierModal from "../components/ModifierModal";
 import BarcodeScannerModal from "../components/BarcodeScannerModal";
 import HardwareScannerInput from "../components/HardwareScannerInput";
 import { useRights } from "../auth/RightsContext";
+import { parseScaleBarcode, PREDEFINED_FORMATS } from "../services/barcodeParser";
 
 function makeStyles(p, cols) {
   const cardWidth = Math.max(12, 100 / cols - 2) + "%";
@@ -166,6 +167,11 @@ export default function POSHomeScreen() {
   const [weightModalVariant, setWeightModalVariant] = useState(null);
   const [weightInput, setWeightInput] = useState("");
   const [weightUnit, setWeightUnit] = useState("kg"); // 'kg' or 'g'
+
+  // 🥡 Takeaway QR Orders State
+  const [takeawayOrders, setTakeawayOrders] = useState([]);
+  const [activeTakeawayOrder, setActiveTakeawayOrder] = useState(null);
+  const takeawayCountRef = useRef(0);
 
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -346,6 +352,26 @@ export default function POSHomeScreen() {
     const interval = setInterval(pollQrOrders, 5000);
     return () => clearInterval(interval);
   }, [settings.qrOrderingEnabled]);
+
+  // 🥡 Poll takeaway orders
+  useEffect(() => {
+    const pollTakeaway = async () => {
+      try {
+        const res = await api.get("/takeaway/orders");
+        const orders = Array.isArray(res.data) ? res.data : [];
+        if (orders.length > takeawayCountRef.current && takeawayCountRef.current >= 0) {
+          playOrderSound();
+        }
+        takeawayCountRef.current = orders.length;
+        setTakeawayOrders(orders);
+      } catch (e) {
+        // silent — endpoint may not exist yet
+      }
+    };
+    pollTakeaway();
+    const interval = setInterval(pollTakeaway, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const filteredProducts = products.filter(
     (pp) =>
@@ -732,10 +758,105 @@ export default function POSHomeScreen() {
   const handleBarcodeScanned = async (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
+
+    // ⚖️ STEP 1: Try scale barcode parsing first (if enabled)
+    const scaleSettings = settings.scale || {};
+    if (scaleSettings.enabled) {
+      let scaleFormat = null;
+      
+      if (scaleSettings.formatKey === "custom" && scaleSettings.custom) {
+        scaleFormat = scaleSettings.custom;
+      } else if (scaleSettings.formatKey && PREDEFINED_FORMATS[scaleSettings.formatKey]) {
+        scaleFormat = PREDEFINED_FORMATS[scaleSettings.formatKey];
+      }
+
+      if (scaleFormat) {
+        const scaleResult = parseScaleBarcode(cleanCode, scaleFormat);
+        
+        if (scaleResult && scaleResult.itemId !== null) {
+          const product = products.find((pp) => {
+            return String(pp.product_id) === String(scaleResult.itemId) ||
+                   String(pp.id) === String(scaleResult.itemId) ||
+                   (pp.variants || []).some((v) => String(v.sku) === String(scaleResult.itemId));
+          });
+
+          if (product) {
+            const variant = (product.variants || []).find((v) => String(v.sku) === String(scaleResult.itemId)) || (product.variants || [])[0];
+            
+            if (variant) {
+              if (scaleResult.weight !== null && scaleResult.weight > 0) {
+                const pricePerKg = scaleResult.unitPrice || Number(variant.price || 0);
+                const weightKg = scaleResult.weight;
+                const lineId = "W_" + String(variant.id) + "_" + weightKg.toFixed(3);
+
+                setCart((prevCart) => {
+                  const existing = prevCart.find((item) => item.id === lineId);
+                  if (existing) {
+                    return prevCart.map((item) =>
+                      item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item
+                    );
+                  }
+                  return [
+                    ...prevCart,
+                    {
+                      id: lineId,
+                      variant_id: variant.id,
+                      product_id: product.product_id || product.id,
+                      category_id: product.category_id,
+                      name: product.name,
+                      description: product.description,
+                      price: pricePerKg,
+                      quantity: 1,
+                      sold_by_weight: true,
+                      weight_kg: weightKg,
+                      unit_price_per_kg: pricePerKg,
+                      modifiers: [],
+                      is_time_based: false,
+                    },
+                  ];
+                });
+                return;
+              } else if (scaleResult.price !== null && scaleResult.price > 0) {
+                const lineId = "SP_" + String(variant.id) + "_" + scaleResult.price.toFixed(2);
+                
+                setCart((prevCart) => {
+                  const existing = prevCart.find((item) => item.id === lineId);
+                  if (existing) {
+                    return prevCart.map((item) =>
+                      item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item
+                    );
+                  }
+                  return [
+                    ...prevCart,
+                    {
+                      id: lineId,
+                      variant_id: variant.id,
+                      product_id: product.product_id || product.id,
+                      category_id: product.category_id,
+                      name: product.name,
+                      description: product.description,
+                      price: scaleResult.price,
+                      quantity: 1,
+                      sold_by_weight: false,
+                      modifiers: [],
+                      is_time_based: false,
+                    },
+                  ];
+                });
+                return;
+              }
+            }
+          }
+          Alert.alert("Scale Item Not Found", "Item #" + scaleResult.itemId + " not found in your products. Make sure the product SKU matches the scale item number.");
+          return;
+        }
+      }
+    }
+
+    // ⚖️ STEP 2: Normal barcode lookup
     for (const product of products) {
       const variant = (product.variants || []).find((v) => v.barcode === code || v.sku === code);
       if (variant) {
-        // ⚖️ If weight item, open weight modal
         if (product.sold_by_weight) {
           setWeightModalProduct(product);
           setWeightModalVariant(variant);
@@ -830,6 +951,81 @@ export default function POSHomeScreen() {
     }
   };
 
+  // 🥡 Takeaway handlers
+  const handleTakeawayAccept = async (orderId) => {
+    try {
+      const order = takeawayOrders.find((o) => o.id === orderId);
+      if (!order) return;
+      await api.put(`/takeaway/orders/${orderId}/accept`);
+      const normalizedItems = (order.items || []).map((item) => ({ ...item, name: item.name || "Item" }));
+      const kpGroups = routeItemsForKitchen(normalizedItems, settings);
+      for (const g of kpGroups) {
+        try {
+          await printKitchenTicket({
+            type: "NEW",
+            table: "TAKEAWAY #" + String(order.id).padStart(4, "0"),
+            billNumber: order.id,
+            dining: "takeaway",
+            items: g.items,
+            settings,
+            printer: g.printer,
+          });
+        } catch (e) { console.error("Kitchen print failed:", e); }
+      }
+      Alert.alert("✅", "Takeaway #" + String(order.id).padStart(4, "0") + " accepted! Kitchen ticket printed.");
+    } catch (e) {
+      Alert.alert("Error", "Failed to accept: " + (e.response?.data?.error || e.message));
+    }
+  };
+
+  const handleTakeawayCancel = async (orderId) => {
+    if (!window.confirm("Cancel this takeaway order?")) return;
+    try {
+      await api.put(`/takeaway/orders/${orderId}/cancel`);
+    } catch (e) {
+      Alert.alert("Error", "Failed to cancel: " + e.message);
+    }
+  };
+
+  const handleTakeawayPay = (order) => {
+    if (cart.length > 0) {
+      Alert.alert("Cart Not Empty", "Please clear or park the current cart first.");
+      return;
+    }
+    const loadedCart = (order.items || []).map((i) => {
+      const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
+      return {
+        id: String(i.variant_id) + (modsKey ? "_" + modsKey : ""),
+        variant_id: i.variant_id,
+        product_id: i.product_id,
+        category_id: i.category_id,
+        name: i.name || "Item",
+        price: Number(i.price || 0),
+        quantity: Number(i.quantity || 1),
+        modifiers: i.modifiers || [],
+        is_time_based: false,
+        time_unit_minutes: null,
+        time_start: null,
+      };
+    });
+    const orderTotal = Number(order.total || 0);
+    setCart(loadedCart);
+    setActiveTakeawayOrder(order);
+    setDiningOption("takeaway");
+    setPaymentMethod("cash");
+    setAmountTendered(orderTotal.toFixed(dec));
+    setSplitCash((orderTotal / 2).toFixed(dec));
+    setPaymentModalVisible(true);
+  };
+
+  const closePaymentClearTakeaway = () => {
+    setPaymentModalVisible(false);
+    if (activeTakeawayOrder) {
+      setCart([]);
+      setActiveTakeawayOrder(null);
+    }
+  };
+
   const getTableName = (tableId) => {
     const tb = tables.find((t) => t.id === tableId);
     return tb ? tb.name : `Table ${tableId}`;
@@ -897,6 +1093,13 @@ export default function POSHomeScreen() {
         }
       }
 
+      // 🥡 Mark takeaway order complete after successful sale
+      if (activeTakeawayOrder) {
+        try {
+          await api.put(`/takeaway/orders/${activeTakeawayOrder.id}/complete`, { payment_method: payment.payment_method });
+        } catch (e) { console.error("Takeaway complete failed:", e); }
+      }
+
       const quantityByVariant = {};
       finalCart.forEach((cartItem) => {
         quantityByVariant[cartItem.variant_id] = (quantityByVariant[cartItem.variant_id] || 0) + (cartItem.sold_by_weight ? 1 : cartItem.quantity);
@@ -945,6 +1148,7 @@ export default function POSHomeScreen() {
       setCart([]);
       setDiscountValue("");
       setActiveTable(null);
+      setActiveTakeawayOrder(null);
     } catch (error) {
       Alert.alert("Checkout Failed", error.message);
     } finally {
@@ -1192,6 +1396,12 @@ export default function POSHomeScreen() {
                 <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✕</Text>
               </TouchableOpacity>
             ) : null}
+            {activeTakeawayOrder ? (
+              <TouchableOpacity style={{ backgroundColor: "#F59E0B", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4 }} onPress={() => { setCart([]); setActiveTakeawayOrder(null); }}>
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>🥡 Takeaway #{String(activeTakeawayOrder.id).padStart(4, "0")}</Text>
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✕</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           <View style={styles.cartHeaderRight}>
             <TouchableOpacity onPress={voidTicket} style={{ paddingHorizontal: 6 }}>
@@ -1319,12 +1529,12 @@ export default function POSHomeScreen() {
         </View>
       </View>
 
-      {qrOrders.length > 0 && (
+      {(qrOrders.length + takeawayOrders.length) > 0 && (
         <View style={styles.qrPanel}>
           <View style={styles.qrPanelHeader}>
-            <Text style={styles.qrPanelTitle}>📲 QR Orders</Text>
+            <Text style={styles.qrPanelTitle}>📲 Orders</Text>
             <View style={styles.qrPanelBadge}>
-              <Text style={styles.qrPanelBadgeText}>{qrOrders.length}</Text>
+              <Text style={styles.qrPanelBadgeText}>{qrOrders.length + takeawayOrders.length}</Text>
             </View>
           </View>
           <ScrollView style={styles.qrPanelList}>
@@ -1349,6 +1559,59 @@ export default function POSHomeScreen() {
                 </View>
               </View>
             ))}
+
+            {/* 🥡 TAKEAWAY ORDERS SECTION */}
+            {takeawayOrders.length > 0 ? (
+              <View>
+                <View style={{ backgroundColor: "#F59E0B", padding: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ color: "#fff", fontSize: 14, fontWeight: "bold" }}>🥡 TAKEAWAY ORDERS</Text>
+                  <View style={{ backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "bold" }}>{takeawayOrders.length}</Text>
+                  </View>
+                </View>
+                {takeawayOrders.map((order) => {
+                  const isPending = order.status === "pending";
+                  return (
+                    <View key={"tk-" + order.id} style={styles.qrOrderItem}>
+                      <View style={{ backgroundColor: isPending ? "#F59E0B" : "#16A34A", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: "flex-start", marginBottom: 6 }}>
+                        <Text style={{ color: "#fff", fontSize: 10, fontWeight: "bold" }}>
+                          {isPending ? "🟡 PENDING" : "🟢 PREPARING"}
+                        </Text>
+                      </View>
+                      <View style={styles.qrOrderHeader}>
+                        <Text style={styles.qrOrderTable}>🥡 #{String(order.id).padStart(4, "0")}</Text>
+                        <Text style={styles.qrOrderTime}>
+                          {new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: p.text, marginBottom: 4 }}>
+                        👤 {order.customer_name || "Guest"}{order.customer_phone ? " • 📞 " + order.customer_phone : ""}
+                      </Text>
+                      <Text style={styles.qrOrderItems}>
+                        {(order.items || []).length} items: {(order.items || []).map((i) => i.name).join(", ")}
+                      </Text>
+                      <Text style={{ fontSize: 15, fontWeight: "900", color: p.accent, marginBottom: 8 }}>{fm(order.total)}</Text>
+                      <View style={styles.qrOrderActions}>
+                        {isPending ? (
+                          <>
+                            <TouchableOpacity style={styles.qrAcceptBtn} onPress={() => handleTakeawayAccept(order.id)}>
+                              <Text style={styles.qrAcceptText}>✅ ACCEPT & PRINT</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={{ backgroundColor: "#EF4444", borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14 }} onPress={() => handleTakeawayCancel(order.id)}>
+                              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>✕</Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <TouchableOpacity style={{ flex: 1, backgroundColor: "#0EA5E9", borderRadius: 8, paddingVertical: 10, alignItems: "center" }} onPress={() => handleTakeawayPay(order)}>
+                            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>💰 TAKE PAYMENT</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
           </ScrollView>
         </View>
       )}
@@ -1540,7 +1803,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      <Modal visible={paymentModalVisible} transparent animationType="fade" onRequestClose={() => setPaymentModalVisible(false)}>
+      <Modal visible={paymentModalVisible} transparent animationType="fade" onRequestClose={closePaymentClearTakeaway}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
             <Text style={styles.paymentTitle}>{t("payment")}</Text>
@@ -1586,7 +1849,7 @@ export default function POSHomeScreen() {
             ) : null}
 
             <View style={styles.paymentButtonRow}>
-              <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setPaymentModalVisible(false)}>
+              <TouchableOpacity style={styles.paymentCancelButton} onPress={closePaymentClearTakeaway}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.paymentConfirmButton, !canConfirmPayment && styles.paymentConfirmDisabled]} onPress={confirmPayment} disabled={!canConfirmPayment}>
