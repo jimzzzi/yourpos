@@ -20,6 +20,7 @@ import UsersScreen from "./src/screens/UsersScreen";
 import { useOfflineSync } from "./src/hooks/useOfflineSync";
 import CustomerMenuScreen from "./src/screens/CustomerMenuScreen";
 import CustomerTakeawayScreen from "./src/screens/CustomerTakeawayScreen"; // 🥡 NEW
+import TakeawayScreen from "./src/screens/TakeawayScreen";
 
 function SplashLoading() {
   return (
@@ -37,6 +38,7 @@ function SyncController() {
 
 const MENU_ITEMS = [
   { key: "pos", labelKey: "sales", icon: "🛒", right: "sales" },
+  { key: "takeaway", labelKey: "takeaway", icon: "🥡", right: "sales" },
   { key: "orders", labelKey: "receipts", icon: "🧾", right: "receipts" },
   { key: "inventory", labelKey: "items", icon: "📦", right: "items" },
   { key: "modifiers", labelKey: "modifiers", icon: "🧂", right: "items" },
@@ -187,6 +189,7 @@ function MainApp() {
 
       <View style={styles.content}>
         {activeScreen === "pos" && <POSHomeScreen />}
+		{activeScreen === "takeaway" && <TakeawayScreen />}
         {activeScreen === "orders" && <OrdersScreen />}
         {activeScreen === "inventory" && <InventoryScreen />}
         {activeScreen === "modifiers" && <ModifiersScreen />}

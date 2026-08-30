@@ -1073,7 +1073,8 @@ export default function POSHomeScreen() {
         payment,
       });
 
-      if (!activeTable) {
+          // Only print KOT if NOT a takeaway order (KOT already printed on accept)
+      if (!activeTable && !activeTakeawayOrder) {
         const ticketTable = diningOption === "takeaway" ? "TAKEAWAY" : (settings.diningEnabled ? "DINE-IN" : "COUNTER");
         const kpGroups = routeItemsForKitchen(finalCart, settings);
         for (const g of kpGroups) {
