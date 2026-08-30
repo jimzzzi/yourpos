@@ -252,5 +252,19 @@ router.put("/orders/:id/cancel", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to cancel order." });
   }
 });
-
+// ========== POS: Get Takeaway QR Link (AUTH) ==========
+router.get("/qr-link", authenticateToken, async (req, res) => {
+  try {
+    const result = await db.query(
+      "SELECT takeaway_token FROM stores WHERE id = $1",
+      [req.user.storeId]
+    );
+    if (result.rows.length === 0 || !result.rows[0].takeaway_token) {
+      return res.status(404).json({ error: "Takeaway token not found." });
+    }
+    res.json({ token: result.rows[0].takeaway_token });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get takeaway link." });
+  }
+});
 module.exports = router;
