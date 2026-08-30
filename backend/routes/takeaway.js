@@ -5,40 +5,53 @@ const authenticateToken = require("../middleware/auth");
 
 const router = express.Router();
 
-const menuLimiter = rateLimit({ windowMs: 60 * 1000, max: 60, message: { error: "Too many requests. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
-const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 100, message: { error: "Too many orders. Please wait a moment." }, standardHeaders: true, legacyHeaders: false });
+// Rate limiters
+const menuLimiter = rateLimit({ 
+  windowMs: 60 * 1000, 
+  max: 60, 
+  message: { error: "Too many requests. Please wait a moment." }, 
+  standardHeaders: true, 
+  legacyHeaders: false 
+});
+
+const orderLimiter = rateLimit({ 
+  windowMs: 60 * 1000, 
+  max: 100, 
+  message: { error: "Too many orders. Please wait a moment." }, 
+  standardHeaders: true, 
+  legacyHeaders: false 
+});
 
 // ========== PUBLIC: Takeaway menu ==========
 router.get("/menu", menuLimiter, async (req, res) => {
   try {
-        // 🔐 Support both token (secure) and store ID (backward compatible)
+    // 🔐 Support both token (secure) and store ID (backward compatible)
     const takeawayToken = req.query.token;
     const storeId = parseInt(req.query.store);
 
     let storeRes;
     if (takeawayToken) {
-      // New secure way: lookup by token
       storeRes = await db.query("SELECT id, name, currency, tax_rate, tax_inclusive FROM stores WHERE takeaway_token = $1", [takeawayToken]);
     } else if (storeId && !Number.isNaN(storeId)) {
-      // Old way: lookup by store ID (still works!)
       storeRes = await db.query("SELECT id, name, currency, tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
     } else {
       return res.status(400).json({ error: "Invalid store code." });
-    } tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
+    }
+
     if (storeRes.rows.length === 0) return res.status(404).json({ error: "Store not found." });
     const store = storeRes.rows[0];
 
     // Currency symbol (safe fallback)
     let currencySymbol = store.currency || "AED";
     try {
-      const sRes = await db.query("SELECT settings FROM stores WHERE id = $1", [storeId]);
+      const sRes = await db.query("SELECT settings FROM stores WHERE id = $1", [store.id]);
       if (sRes.rows[0] && sRes.rows[0].settings) {
         const s = typeof sRes.rows[0].settings === "string" ? JSON.parse(sRes.rows[0].settings) : sRes.rows[0].settings;
         if (s && s.currencySymbol) currencySymbol = s.currencySymbol;
       }
     } catch (e) {}
 
-    const catsRes = await db.query("SELECT id, name FROM categories WHERE store_id = $1 ORDER BY name ASC", [storeId]);
+    const catsRes = await db.query("SELECT id, name FROM categories WHERE store_id = $1 ORDER BY name ASC", [store.id]);
 
     // Exclude weight items (customer can't weigh remotely)
     const productsRes = await db.query(
@@ -46,7 +59,7 @@ router.get("/menu", menuLimiter, async (req, res) => {
        FROM products p
        WHERE p.store_id = $1 AND p.is_available = true AND COALESCE(p.sold_by_weight, false) = false
        ORDER BY p.name ASC`,
-      [storeId]
+      [store.id]
     );
 
     const productIds = productsRes.rows.map((p) => p.id);
@@ -64,7 +77,7 @@ router.get("/menu", menuLimiter, async (req, res) => {
 
     let modifiers = [];
     try {
-      const modsRes = await db.query("SELECT id, name, price, category_ids FROM modifiers WHERE store_id = $1 AND is_available = true ORDER BY name ASC", [storeId]);
+      const modsRes = await db.query("SELECT id, name, price, category_ids FROM modifiers WHERE store_id = $1 AND is_available = true ORDER BY name ASC", [store.id]);
       modifiers = modsRes.rows.map((m) => ({ id: m.id, name: m.name, price: Number(m.price || 0), category_ids: m.category_ids || [] }));
     } catch (e) {}
 
@@ -178,9 +191,9 @@ router.post("/order", orderLimiter, async (req, res) => {
       order_number: String(insertRes.rows[0].id).padStart(4, "0"),
       message: "Order received! Pay at the counter when you pick up.",
     });
-    } catch (error) {
+  } catch (error) {
     console.error("Takeaway order error:", error);
-    res.status(500).json({ error: "DB ERROR: " + error.message });
+    res.status(500).json({ error: "Failed to place order." });
   }
 });
 
@@ -252,6 +265,7 @@ router.put("/orders/:id/cancel", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to cancel order." });
   }
 });
+
 // ========== POS: Get Takeaway QR Link (AUTH) ==========
 router.get("/qr-link", authenticateToken, async (req, res) => {
   try {
@@ -267,4 +281,5 @@ router.get("/qr-link", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "Failed to get takeaway link." });
   }
 });
+
 module.exports = router;
