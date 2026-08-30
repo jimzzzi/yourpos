@@ -957,6 +957,8 @@ export default function POSHomeScreen() {
       const order = takeawayOrders.find((o) => o.id === orderId);
       if (!order) return;
       await api.put(`/takeaway/orders/${orderId}/accept`);
+	  // 🥡 Remove from floating panel (it's now in Takeaway screen)
+      setTakeawayOrders((prev) => prev.filter((o) => o.id !== orderId));
       const normalizedItems = (order.items || []).map((item) => ({ ...item, name: item.name || "Item" }));
       const kpGroups = routeItemsForKitchen(normalizedItems, settings);
       for (const g of kpGroups) {
