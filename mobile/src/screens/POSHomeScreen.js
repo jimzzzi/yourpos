@@ -132,7 +132,6 @@ function makeStyles(p, cols) {
     qrRejectBtn: { flex: 1, backgroundColor: p.surface2, borderRadius: 8, paddingVertical: 10, alignItems: "center", borderWidth: 1, borderColor: p.border },
     qrAcceptText: { color: "#fff", fontWeight: "bold", fontSize: 13 },
     qrRejectText: { color: p.text, fontWeight: "bold", fontSize: 13 },
-    // ⚖️ Weight badge style
     weightBadge: { position: "absolute", top: 4, left: 4, backgroundColor: "#F59E0B", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, zIndex: 5 },
     weightBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
   };
@@ -162,13 +161,11 @@ export default function POSHomeScreen() {
   const [modifierPick, setModifierPick] = useState(null);
   const [scannerVisible, setScannerVisible] = useState(false);
 
-  // ⚖️ NEW: Weight modal state
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [weightModalVariant, setWeightModalVariant] = useState(null);
   const [weightInput, setWeightInput] = useState("");
-  const [weightUnit, setWeightUnit] = useState("kg"); // 'kg' or 'g'
+  const [weightUnit, setWeightUnit] = useState("kg");
 
-  // 🥡 Takeaway QR Orders State
   const [takeawayOrders, setTakeawayOrders] = useState([]);
   const [activeTakeawayOrder, setActiveTakeawayOrder] = useState(null);
   const takeawayCountRef = useRef(0);
@@ -257,7 +254,6 @@ export default function POSHomeScreen() {
   );
 
   const { subtotal, discount, tax, total } = useMemo(() => {
-    // ⚖️ Calculate raw total handling both weight items and regular items
     const raw = displayCart.reduce((sum, item) => {
       if (item.sold_by_weight) {
         return sum + (Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0));
@@ -298,7 +294,7 @@ export default function POSHomeScreen() {
             image_url: product.image_url,
             description: product.description,
             track_stock: Boolean(product.track_stock),
-            sold_by_weight: Boolean(product.sold_by_weight), // ⚖️ NEW
+            sold_by_weight: Boolean(product.sold_by_weight),
             is_time_based: Boolean(product.is_time_based),
             time_unit_minutes: product.time_unit_minutes,
             variants,
@@ -338,7 +334,6 @@ export default function POSHomeScreen() {
       try {
         const res = await api.get("/qr/pending");
         const pending = Array.isArray(res.data) ? res.data : [];
-        console.log("🔍 QR Poll result:", pending.length, "pending orders");
         if (pending.length > qrCountRef.current && qrCountRef.current >= 0) {
           playOrderSound();
         }
@@ -353,7 +348,6 @@ export default function POSHomeScreen() {
     return () => clearInterval(interval);
   }, [settings.qrOrderingEnabled]);
 
-  // 🥡 Poll takeaway orders
   useEffect(() => {
     const pollTakeaway = async () => {
       try {
@@ -364,9 +358,7 @@ export default function POSHomeScreen() {
         }
         takeawayCountRef.current = orders.length;
         setTakeawayOrders(orders);
-      } catch (e) {
-        // silent — endpoint may not exist yet
-      }
+      } catch (e) {}
     };
     pollTakeaway();
     const interval = setInterval(pollTakeaway, 5000);
@@ -419,37 +411,20 @@ export default function POSHomeScreen() {
     });
   };
 
-  // ⚖️ NEW: Add weight-based item to cart
   const addWeightItemToCart = () => {
     if (!weightModalProduct || !weightModalVariant) return;
-    
     let weightKg = Number(weightInput || 0);
-    
-    // Convert grams to KG if unit is grams
-    if (weightUnit === "g") {
-      weightKg = weightKg / 1000;
-    }
-    
+    if (weightUnit === "g") weightKg = weightKg / 1000;
     if (weightKg <= 0) {
       Alert.alert("Weight Required", "Please enter a valid weight.");
       return;
     }
-    
     const pricePerKg = Number(weightModalVariant.price || 0);
-    
-    // Unique line ID based on variant + weight (so same weight can merge)
     const lineId = "W_" + String(weightModalVariant.id) + "_" + weightKg.toFixed(3);
-    
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === lineId);
       if (existing) {
-        // Same weight already in cart — add another entry (separate line)
-        // Actually, let's just add quantity and total weight
-        return prevCart.map((item) => 
-          item.id === lineId 
-            ? { ...item, quantity: item.quantity + 1 } 
-            : item
-        );
+        return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
       }
       return [
         ...prevCart,
@@ -460,7 +435,7 @@ export default function POSHomeScreen() {
           category_id: weightModalProduct.category_id,
           name: weightModalProduct.name,
           description: weightModalProduct.description,
-          price: pricePerKg, // Price per KG stored here
+          price: pricePerKg,
           quantity: 1,
           sold_by_weight: true,
           weight_kg: weightKg,
@@ -472,8 +447,6 @@ export default function POSHomeScreen() {
         },
       ];
     });
-    
-    // Close modal
     setWeightModalProduct(null);
     setWeightModalVariant(null);
     setWeightInput("");
@@ -489,12 +462,9 @@ export default function POSHomeScreen() {
     addToCart(product, variant, []);
   };
 
-  // ⚖️ Updated handleProductTap — check for weight items first
   const handleProductTap = (product) => {
     const availableVariants = product.variants || [];
     if (availableVariants.length === 0) return;
-    
-    // ⚖️ If sold by weight, open weight modal
     if (product.sold_by_weight) {
       setWeightModalProduct(product);
       setWeightModalVariant(availableVariants[0]);
@@ -502,8 +472,6 @@ export default function POSHomeScreen() {
       setWeightUnit("kg");
       return;
     }
-    
-    // Normal flow
     if (availableVariants.length === 1) {
       proceedToAdd(product, availableVariants[0]);
       return;
@@ -641,25 +609,15 @@ export default function POSHomeScreen() {
           unit_price_per_kg: isWeight ? Number(i.price || 0) : null,
         };
       });
-
       const startTime = tb.open_order.created_at ? new Date(tb.open_order.created_at).getTime() : null;
       const finalItems = applyTimeCharges(normalizedItems, startTime, Date.now());
-
       const raw = finalItems.reduce((sum, item) => {
-        if (item.sold_by_weight) {
-          return sum + (Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0));
-        }
+        if (item.sold_by_weight) return sum + (Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0));
         return sum + Number(item.price || 0) * Number(item.quantity || 0);
       }, 0);
       let pTax, pTotal;
-      if (vatInclusive) {
-        pTotal = raw;
-        pTax = pTotal - pTotal / (1 + taxRate);
-      } else {
-        pTax = raw * taxRate;
-        pTotal = raw + pTax;
-      }
-
+      if (vatInclusive) { pTotal = raw; pTax = pTotal - pTotal / (1 + taxRate); }
+      else { pTax = raw * taxRate; pTotal = raw + pTax; }
       setPreprintItems(finalItems);
       setPreprintTotals({ subtotal: raw, tax: pTax, total: pTotal });
       setPreprintTable(tb);
@@ -681,8 +639,7 @@ export default function POSHomeScreen() {
         total: preprintTotals.total,
         discount: 0,
         payment: null,
-        store,
-        settings,
+        store, settings,
         orderId: "PRE-" + preprintTable.id,
         billNumber: preprintTable.open_order?.bill_number,
         dining: "dine_in",
@@ -700,36 +657,25 @@ export default function POSHomeScreen() {
 
   const parkToTable = async () => {
     if (!activeTable) return;
-    if (cart.length === 0) {
-      Alert.alert(t("cartEmpty"));
-      return;
-    }
-    
+    if (cart.length === 0) { Alert.alert(t("cartEmpty")); return; }
     const currentTable = activeTable;
     const isNewOrder = !currentTable.open_order;
-    
     try {
-      const addedItems =
-        originalCartForTable.length === 0
-          ? cart
-          : cart
-              .map((newItem) => {
-                const origItem = originalCartForTable.find((o) => o.id === newItem.id);
-                if (!origItem) return newItem;
-                const diff = newItem.quantity - origItem.quantity;
-                return diff > 0 ? { ...newItem, quantity: diff } : null;
-              })
-              .filter(Boolean);
-
+      const addedItems = originalCartForTable.length === 0
+        ? cart
+        : cart.map((newItem) => {
+            const origItem = originalCartForTable.find((o) => o.id === newItem.id);
+            if (!origItem) return newItem;
+            const diff = newItem.quantity - origItem.quantity;
+            return diff > 0 ? { ...newItem, quantity: diff } : null;
+          }).filter(Boolean);
       await backofficeApi.saveTableOrder(currentTable.id, serializeCart());
-
       Alert.alert("✅", t("parkOn") + " " + currentTable.name + " " + t("payLater"));
       setCart([]);
       setActiveTable(null);
       setOriginalCartForTable([]);
       setTablesView(true);
       loadTables();
-
       if (addedItems.length > 0) {
         try {
           const kpGroups = routeItemsForKitchen(addedItems, settings);
@@ -739,16 +685,11 @@ export default function POSHomeScreen() {
               table: currentTable.name,
               billNumber: currentTable.open_order?.bill_number,
               dining: settings.diningEnabled ? diningOption : null,
-              items: g.items,
-              settings,
-              printer: g.printer,
+              items: g.items, settings, printer: g.printer,
             });
           }
-        } catch (printErr) {
-          console.error("Kitchen print failed on park:", printErr);
-        }
+        } catch (printErr) { console.error("Kitchen print failed on park:", printErr); }
       }
-
     } catch (error) {
       console.error("Park table error:", error);
       Alert.alert("Error", "Failed to park order: " + (error.response?.data?.error || error.message || "Database connection issue."));
@@ -758,126 +699,59 @@ export default function POSHomeScreen() {
   const handleBarcodeScanned = async (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
-
-    // ⚖️ STEP 1: Try scale barcode parsing first (if enabled)
     const scaleSettings = settings.scale || {};
     if (scaleSettings.enabled) {
       let scaleFormat = null;
-      
-      if (scaleSettings.formatKey === "custom" && scaleSettings.custom) {
-        scaleFormat = scaleSettings.custom;
-      } else if (scaleSettings.formatKey && PREDEFINED_FORMATS[scaleSettings.formatKey]) {
-        scaleFormat = PREDEFINED_FORMATS[scaleSettings.formatKey];
-      }
-
+      if (scaleSettings.formatKey === "custom" && scaleSettings.custom) scaleFormat = scaleSettings.custom;
+      else if (scaleSettings.formatKey && PREDEFINED_FORMATS[scaleSettings.formatKey]) scaleFormat = PREDEFINED_FORMATS[scaleSettings.formatKey];
       if (scaleFormat) {
         const scaleResult = parseScaleBarcode(cleanCode, scaleFormat);
-        
         if (scaleResult && scaleResult.itemId !== null) {
-          const product = products.find((pp) => {
-            return String(pp.product_id) === String(scaleResult.itemId) ||
-                   String(pp.id) === String(scaleResult.itemId) ||
-                   (pp.variants || []).some((v) => String(v.sku) === String(scaleResult.itemId));
-          });
-
+          const product = products.find((pp) =>
+            String(pp.product_id) === String(scaleResult.itemId) ||
+            String(pp.id) === String(scaleResult.itemId) ||
+            (pp.variants || []).some((v) => String(v.sku) === String(scaleResult.itemId))
+          );
           if (product) {
             const variant = (product.variants || []).find((v) => String(v.sku) === String(scaleResult.itemId)) || (product.variants || [])[0];
-            
             if (variant) {
               if (scaleResult.weight !== null && scaleResult.weight > 0) {
                 const pricePerKg = scaleResult.unitPrice || Number(variant.price || 0);
                 const weightKg = scaleResult.weight;
                 const lineId = "W_" + String(variant.id) + "_" + weightKg.toFixed(3);
-
                 setCart((prevCart) => {
                   const existing = prevCart.find((item) => item.id === lineId);
-                  if (existing) {
-                    return prevCart.map((item) =>
-                      item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item
-                    );
-                  }
-                  return [
-                    ...prevCart,
-                    {
-                      id: lineId,
-                      variant_id: variant.id,
-                      product_id: product.product_id || product.id,
-                      category_id: product.category_id,
-                      name: product.name,
-                      description: product.description,
-                      price: pricePerKg,
-                      quantity: 1,
-                      sold_by_weight: true,
-                      weight_kg: weightKg,
-                      unit_price_per_kg: pricePerKg,
-                      modifiers: [],
-                      is_time_based: false,
-                    },
-                  ];
+                  if (existing) return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
+                  return [...prevCart, { id: lineId, variant_id: variant.id, product_id: product.product_id || product.id, category_id: product.category_id, name: product.name, description: product.description, price: pricePerKg, quantity: 1, sold_by_weight: true, weight_kg: weightKg, unit_price_per_kg: pricePerKg, modifiers: [], is_time_based: false }];
                 });
                 return;
               } else if (scaleResult.price !== null && scaleResult.price > 0) {
                 const lineId = "SP_" + String(variant.id) + "_" + scaleResult.price.toFixed(2);
-                
                 setCart((prevCart) => {
                   const existing = prevCart.find((item) => item.id === lineId);
-                  if (existing) {
-                    return prevCart.map((item) =>
-                      item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item
-                    );
-                  }
-                  return [
-                    ...prevCart,
-                    {
-                      id: lineId,
-                      variant_id: variant.id,
-                      product_id: product.product_id || product.id,
-                      category_id: product.category_id,
-                      name: product.name,
-                      description: product.description,
-                      price: scaleResult.price,
-                      quantity: 1,
-                      sold_by_weight: false,
-                      modifiers: [],
-                      is_time_based: false,
-                    },
-                  ];
+                  if (existing) return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
+                  return [...prevCart, { id: lineId, variant_id: variant.id, product_id: product.product_id || product.id, category_id: product.category_id, name: product.name, description: product.description, price: scaleResult.price, quantity: 1, sold_by_weight: false, modifiers: [], is_time_based: false }];
                 });
                 return;
               }
             }
           }
-          Alert.alert("Scale Item Not Found", "Item #" + scaleResult.itemId + " not found in your products. Make sure the product SKU matches the scale item number.");
+          Alert.alert("Scale Item Not Found", "Item #" + scaleResult.itemId + " not found in your products.");
           return;
         }
       }
     }
-
-    // ⚖️ STEP 2: Normal barcode lookup
     for (const product of products) {
       const variant = (product.variants || []).find((v) => v.barcode === code || v.sku === code);
       if (variant) {
-        if (product.sold_by_weight) {
-          setWeightModalProduct(product);
-          setWeightModalVariant(variant);
-          setWeightInput("");
-          setWeightUnit("kg");
-        } else {
-          proceedToAdd(product, variant);
-        }
+        if (product.sold_by_weight) { setWeightModalProduct(product); setWeightModalVariant(variant); setWeightInput(""); setWeightUnit("kg"); }
+        else proceedToAdd(product, variant);
         return;
       }
     }
     try {
       const data = await inventoryApi.lookupBarcode(cleanCode);
-      const productLike = {
-        id: String(data.product_id),
-        product_id: data.product_id,
-        name: data.product_name,
-        category_id: null,
-        sold_by_weight: false,
-        variants: [data.variant],
-      };
+      const productLike = { id: String(data.product_id), product_id: data.product_id, name: data.product_name, category_id: null, sold_by_weight: false, variants: [data.variant] };
       proceedToAdd(productLike, data.variant);
     } catch (error) {
       Alert.alert("Not Found", "No product found for barcode: " + cleanCode);
@@ -885,10 +759,7 @@ export default function POSHomeScreen() {
   };
 
   const openPaymentModal = () => {
-    if (cart.length === 0) {
-      Alert.alert(t("cartEmpty"));
-      return;
-    }
+    if (cart.length === 0) { Alert.alert(t("cartEmpty")); return; }
     setPaymentMethod("cash");
     setAmountTendered(total.toFixed(dec));
     setSplitCash((total / 2).toFixed(dec));
@@ -900,78 +771,44 @@ export default function POSHomeScreen() {
   const changeDue = Math.max(0, tenderedValue - total);
   const splitCashNum = Number(splitCash || 0);
   const splitCard = Math.max(0, total - splitCashNum);
-
-  const canConfirmPayment =
-    paymentMethod === "cash"
-      ? tenderedValue >= total
-      : paymentMethod === "card"
-      ? true
-      : splitCashNum > 0 && splitCashNum <= total;
+  const canConfirmPayment = paymentMethod === "cash" ? tenderedValue >= total : paymentMethod === "card" ? true : splitCashNum > 0 && splitCashNum <= total;
 
   const handleQrAccept = async (orderId) => {
     try {
       const order = qrOrders.find((o) => o.id === orderId);
       if (!order) return;
-
       await api.post(`/qr/order/${orderId}/accept`);
       setQrOrders((prev) => prev.filter((o) => o.id !== orderId));
-      
       const table = tables.find((t) => t.id === order.table_id);
       if (table && order.items && order.items.length > 0) {
-        const normalizedItems = order.items.map((item) => ({
-          ...item,
-          name: item.name || item.product_name || "Item",
-        }));
+        const normalizedItems = order.items.map((item) => ({ ...item, name: item.name || item.product_name || "Item" }));
         const kpGroups = routeItemsForKitchen(normalizedItems, settings);
         for (const g of kpGroups) {
-          await printKitchenTicket({
-            type: "NEW",
-            table: table.name,
-            billNumber: null,
-            dining: "dine_in",
-            items: g.items,
-            settings,
-            printer: g.printer,
-          });
+          await printKitchenTicket({ type: "NEW", table: table.name, billNumber: null, dining: "dine_in", items: g.items, settings, printer: g.printer });
         }
       }
-      
       loadTables();
-    } catch (e) {
-      Alert.alert("Error", "Failed to accept order.");
-    }
+    } catch (e) { Alert.alert("Error", "Failed to accept order."); }
   };
 
   const handleQrReject = async (orderId) => {
     try {
       await api.post(`/qr/order/${orderId}/reject`);
       setQrOrders((prev) => prev.filter((o) => o.id !== orderId));
-    } catch (e) {
-      Alert.alert("Error", "Failed to reject order.");
-    }
+    } catch (e) { Alert.alert("Error", "Failed to reject order."); }
   };
 
-  // 🥡 Takeaway handlers
   const handleTakeawayAccept = async (orderId) => {
     try {
       const order = takeawayOrders.find((o) => o.id === orderId);
       if (!order) return;
       await api.put(`/takeaway/orders/${orderId}/accept`);
-	  // 🥡 Remove from floating panel (it's now in Takeaway screen)
       setTakeawayOrders((prev) => prev.filter((o) => o.id !== orderId));
       const normalizedItems = (order.items || []).map((item) => ({ ...item, name: item.name || "Item" }));
       const kpGroups = routeItemsForKitchen(normalizedItems, settings);
       for (const g of kpGroups) {
         try {
-          await printKitchenTicket({
-            type: "NEW",
-            table: "TAKEAWAY #" + String(order.id).padStart(4, "0"),
-            billNumber: order.id,
-            dining: "takeaway",
-            items: g.items,
-            settings,
-            printer: g.printer,
-          });
+          await printKitchenTicket({ type: "NEW", table: "TAKEAWAY #" + String(order.id).padStart(4, "0"), billNumber: order.id, dining: "takeaway", items: g.items, settings, printer: g.printer });
         } catch (e) { console.error("Kitchen print failed:", e); }
       }
       Alert.alert("✅", "Takeaway #" + String(order.id).padStart(4, "0") + " accepted! Kitchen ticket printed.");
@@ -982,33 +819,15 @@ export default function POSHomeScreen() {
 
   const handleTakeawayCancel = async (orderId) => {
     if (!window.confirm("Cancel this takeaway order?")) return;
-    try {
-      await api.put(`/takeaway/orders/${orderId}/cancel`);
-    } catch (e) {
-      Alert.alert("Error", "Failed to cancel: " + e.message);
-    }
+    try { await api.put(`/takeaway/orders/${orderId}/cancel`); }
+    catch (e) { Alert.alert("Error", "Failed to cancel: " + e.message); }
   };
 
   const handleTakeawayPay = (order) => {
-    if (cart.length > 0) {
-      Alert.alert("Cart Not Empty", "Please clear or park the current cart first.");
-      return;
-    }
+    if (cart.length > 0) { Alert.alert("Cart Not Empty", "Please clear or park the current cart first."); return; }
     const loadedCart = (order.items || []).map((i) => {
       const modsKey = (i.modifiers || []).map((m) => m.modifier_id).join("-");
-      return {
-        id: String(i.variant_id) + (modsKey ? "_" + modsKey : ""),
-        variant_id: i.variant_id,
-        product_id: i.product_id,
-        category_id: i.category_id,
-        name: i.name || "Item",
-        price: Number(i.price || 0),
-        quantity: Number(i.quantity || 1),
-        modifiers: i.modifiers || [],
-        is_time_based: false,
-        time_unit_minutes: null,
-        time_start: null,
-      };
+      return { id: String(i.variant_id) + (modsKey ? "_" + modsKey : ""), variant_id: i.variant_id, product_id: i.product_id, category_id: i.category_id, name: i.name || "Item", price: Number(i.price || 0), quantity: Number(i.quantity || 1), modifiers: i.modifiers || [], is_time_based: false, time_unit_minutes: null, time_start: null };
     });
     const orderTotal = Number(order.total || 0);
     setCart(loadedCart);
@@ -1022,10 +841,7 @@ export default function POSHomeScreen() {
 
   const closePaymentClearTakeaway = () => {
     setPaymentModalVisible(false);
-    if (activeTakeawayOrder) {
-      setCart([]);
-      setActiveTakeawayOrder(null);
-    }
+    if (activeTakeawayOrder) { setCart([]); setActiveTakeawayOrder(null); }
   };
 
   const getTableName = (tableId) => {
@@ -1039,188 +855,85 @@ export default function POSHomeScreen() {
     try {
       const billNumber = await nextReceiptNumber(settings);
       const finalCart = applyTimeCharges(cart, orderStartTime, Date.now());
-      
-      // ⚖️ Calculate subtotal handling weight items
       const finalSubtotal = finalCart.reduce((sum, item) => {
-        if (item.sold_by_weight) {
-          return sum + (Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0));
-        }
+        if (item.sold_by_weight) return sum + (Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0));
         return sum + Number(item.price || 0) * Number(item.quantity || 0);
       }, 0);
-      
       const dv = Number(discountValue || 0);
       const finalDiscount = Math.min(finalSubtotal, discountType === "percent" ? (finalSubtotal * dv) / 100 : dv);
       const afterDiscount = finalSubtotal - finalDiscount;
       let finalTax, finalTotal, finalSubtotalDisplay;
-      if (vatInclusive) {
-        finalTotal = afterDiscount;
-        finalTax = finalTotal - finalTotal / (1 + taxRate);
-        finalSubtotalDisplay = finalTotal - finalTax;
-      } else {
-        finalTax = afterDiscount * taxRate;
-        finalTotal = afterDiscount + finalTax;
-        finalSubtotalDisplay = afterDiscount;
-      }
-
-      const order = await createOrder({
-        cart: finalCart,
-        subtotal: finalSubtotal,
-        tax: finalTax,
-        total: finalTotal,
-        discount: finalDiscount,
-        dining: settings.diningEnabled ? diningOption : null,
-        table: activeTable ? activeTable.name : null,
-        user,
-        store,
-        payment,
-      });
-
-          // Only print KOT if NOT a takeaway order (KOT already printed on accept)
+      if (vatInclusive) { finalTotal = afterDiscount; finalTax = finalTotal - finalTotal / (1 + taxRate); finalSubtotalDisplay = finalTotal - finalTax; }
+      else { finalTax = afterDiscount * taxRate; finalTotal = afterDiscount + finalTax; finalSubtotalDisplay = afterDiscount; }
+      const order = await createOrder({ cart: finalCart, subtotal: finalSubtotal, tax: finalTax, total: finalTotal, discount: finalDiscount, dining: settings.diningEnabled ? diningOption : null, table: activeTable ? activeTable.name : null, user, store, payment });
       if (!activeTable && !activeTakeawayOrder) {
         const ticketTable = diningOption === "takeaway" ? "TAKEAWAY" : (settings.diningEnabled ? "DINE-IN" : "COUNTER");
         const kpGroups = routeItemsForKitchen(finalCart, settings);
         for (const g of kpGroups) {
-          try {
-            await printKitchenTicket({
-              type: "NEW",
-              table: ticketTable,
-              billNumber: billNumber,
-              dining: diningOption,
-              items: g.items,
-              settings,
-              printer: g.printer,
-            });
-          } catch (printErr) {
-            console.error("Kitchen print failed:", printErr);
-          }
+          try { await printKitchenTicket({ type: "NEW", table: ticketTable, billNumber: billNumber, dining: diningOption, items: g.items, settings, printer: g.printer }); }
+          catch (printErr) { console.error("Kitchen print failed:", printErr); }
         }
       }
-
-      // 🥡 Mark takeaway order complete after successful sale
       if (activeTakeawayOrder) {
-        try {
-          await api.put(`/takeaway/orders/${activeTakeawayOrder.id}/complete`, { payment_method: payment.payment_method });
-        } catch (e) { console.error("Takeaway complete failed:", e); }
+        try { await api.put(`/takeaway/orders/${activeTakeawayOrder.id}/complete`, { payment_method: payment.payment_method }); }
+        catch (e) { console.error("Takeaway complete failed:", e); }
       }
-
       const quantityByVariant = {};
-      finalCart.forEach((cartItem) => {
-        quantityByVariant[cartItem.variant_id] = (quantityByVariant[cartItem.variant_id] || 0) + (cartItem.sold_by_weight ? 1 : cartItem.quantity);
-      });
-      setProducts((prevProducts) =>
-        prevProducts.map((product) => {
-          const updatedVariants = (product.variants || []).map((variant) => {
-            const sold = quantityByVariant[variant.id] || 0;
-            if (!sold) return variant;
-            return { ...variant, stock_quantity: Number(variant.stock_quantity || 0) - sold };
-          });
-          const totalStock = updatedVariants.reduce((s, v) => s + Number(v.stock_quantity || 0), 0);
-          return { ...product, variants: updatedVariants, stock_quantity: totalStock };
-        })
-      );
-
+      finalCart.forEach((cartItem) => { quantityByVariant[cartItem.variant_id] = (quantityByVariant[cartItem.variant_id] || 0) + (cartItem.sold_by_weight ? 1 : cartItem.quantity); });
+      setProducts((prevProducts) => prevProducts.map((product) => {
+        const updatedVariants = (product.variants || []).map((variant) => {
+          const sold = quantityByVariant[variant.id] || 0;
+          if (!sold) return variant;
+          return { ...variant, stock_quantity: Number(variant.stock_quantity || 0) - sold };
+        });
+        const totalStock = updatedVariants.reduce((s, v) => s + Number(v.stock_quantity || 0), 0);
+        return { ...product, variants: updatedVariants, stock_quantity: totalStock };
+      }));
       await syncOfflineOrders();
-      if (activeTable) {
-        await backofficeApi.clearTableOrder(activeTable.id).catch(() => {});
-        loadTables();
-      }
-
+      if (activeTable) { await backofficeApi.clearTableOrder(activeTable.id).catch(() => {}); loadTables(); }
       const cd = settings.cashDrawer || {};
       const isCashPayment = payment && payment.payment_method === "cash";
       if (cd.enabled && cd.autoOnCash !== false && isCashPayment) {
-        try {
-          const mod = await import("../services/printerService");
-          await mod.openCashDrawer(settings);
-        } catch (e) {
-          console.warn("Auto-open drawer failed:", e);
-        }
+        try { const mod = await import("../services/printerService"); await mod.openCashDrawer(settings); }
+        catch (e) { console.warn("Auto-open drawer failed:", e); }
       }
-
-      setCompletedSale({
-        items: finalCart,
-        subtotal: finalSubtotalDisplay,
-        tax: finalTax,
-        total: finalTotal,
-        discount: finalDiscount,
-        payment,
-        orderId: order.client_order_id,
-        dining: settings.diningEnabled ? diningOption : null,
-        table: activeTable ? activeTable.name : null,
-        billNumber,
-      });
+      setCompletedSale({ items: finalCart, subtotal: finalSubtotalDisplay, tax: finalTax, total: finalTotal, discount: finalDiscount, payment, orderId: order.client_order_id, dining: settings.diningEnabled ? diningOption : null, table: activeTable ? activeTable.name : null, billNumber });
       setCart([]);
       setDiscountValue("");
       setActiveTable(null);
       setActiveTakeawayOrder(null);
-    } catch (error) {
-      Alert.alert("Checkout Failed", error.message);
-    } finally {
-      setProcessing(false);
-    }
+    } catch (error) { Alert.alert("Checkout Failed", error.message); }
+    finally { setProcessing(false); }
   };
 
   const confirmPayment = () => {
     let payment;
-    if (paymentMethod === "cash") {
-      payment = { payment_method: "cash", amount_tendered: tenderedValue, change_due: changeDue, payments: [{ method: "cash", amount: total }] };
-    } else if (paymentMethod === "card") {
-      payment = { payment_method: "card", amount_tendered: total, change_due: 0, payments: [{ method: "card", amount: total }] };
-    } else {
-      payment = {
-        payment_method: "split",
-        amount_tendered: total,
-        change_due: 0,
-        payments: [
-          { method: "cash", amount: splitCashNum },
-          { method: "card", amount: splitCard },
-        ],
-      };
-    }
+    if (paymentMethod === "cash") payment = { payment_method: "cash", amount_tendered: tenderedValue, change_due: changeDue, payments: [{ method: "cash", amount: total }] };
+    else if (paymentMethod === "card") payment = { payment_method: "card", amount_tendered: total, change_due: 0, payments: [{ method: "card", amount: total }] };
+    else payment = { payment_method: "split", amount_tendered: total, change_due: 0, payments: [{ method: "cash", amount: splitCashNum }, { method: "card", amount: splitCard }] };
     setPaymentModalVisible(false);
     handleCheckout(payment);
   };
 
   const handlePrintAndSave = async () => {
     if (!completedSale) return;
-    const result = await printReceipt({
-      items: completedSale.items,
-      subtotal: completedSale.subtotal,
-      tax: completedSale.tax,
-      total: completedSale.total,
-      payment: completedSale.payment,
-      store,
-      settings,
-      orderId: completedSale.orderId,
-      dining: completedSale.dining,
-      table: completedSale.table,
-      billNumber: completedSale.billNumber,
-    });
+    const result = await printReceipt({ items: completedSale.items, subtotal: completedSale.subtotal, tax: completedSale.tax, total: completedSale.total, payment: completedSale.payment, store, settings, orderId: completedSale.orderId, dining: completedSale.dining, table: completedSale.table, billNumber: completedSale.billNumber });
     if (!result.success) Alert.alert("Print Failed", result.error || "Could not print.");
     setCompletedSale(null);
   };
 
-  const openCashModal = (type) => {
-    setCashAmount("");
-    setCashNote("");
-    setCashModal(type);
-  };
+  const openCashModal = (type) => { setCashAmount(""); setCashNote(""); setCashModal(type); };
 
   const confirmCashMovement = async () => {
     const amount = Number(cashAmount || 0);
-    if (!amount || amount <= 0) {
-      Alert.alert("Error", t("amountLabel") + "?");
-      return;
-    }
+    if (!amount || amount <= 0) { Alert.alert("Error", t("amountLabel") + "?"); return; }
     try {
       setSavingCash(true);
       await backofficeApi.addCashMovement({ type: cashModal, amount, note: cashNote.trim() });
       Alert.alert("✅", (cashModal === "cash_in" ? t("cashIn") : t("cashOut")) + " " + fm(amount));
       setCashModal(null);
-    } catch (error) {
-      Alert.alert("Error", error.response?.data?.error || "Failed.");
-    } finally {
-      setSavingCash(false);
-    }
+    } catch (error) { Alert.alert("Error", error.response?.data?.error || "Failed."); }
+    finally { setSavingCash(false); }
   };
 
   const formatTimer = (seconds) => {
@@ -1236,7 +949,6 @@ export default function POSHomeScreen() {
     return "#DC2626";
   };
 
-  // ⚖️ Live weight total for modal
   const weightModalLiveTotal = useMemo(() => {
     if (!weightModalVariant || !weightInput) return 0;
     let weightKg = Number(weightInput || 0);
@@ -1252,17 +964,10 @@ export default function POSHomeScreen() {
         <View style={styles.productImageBox}>
           {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.productImage} resizeMode="cover" /> : <Text style={styles.productIcon}>🍽️</Text>}
         </View>
-        {/* ⚖️ Weight badge */}
-        {item.sold_by_weight ? (
-          <View style={styles.weightBadge}>
-            <Text style={styles.weightBadgeText}>⚖️ /KG</Text>
-          </View>
-        ) : null}
+        {item.sold_by_weight ? (<View style={styles.weightBadge}><Text style={styles.weightBadgeText}>⚖️ /KG</Text></View>) : null}
         <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
         <Text style={styles.productDesc} numberOfLines={1}>{item.description || " "}</Text>
-        <Text style={styles.productPrice}>
-          {item.sold_by_weight ? fm(item.price) + "/kg" : fm(item.price)}
-        </Text>
+        <Text style={styles.productPrice}>{item.sold_by_weight ? fm(item.price) + "/kg" : fm(item.price)}</Text>
         <Text style={styles.outOfStockText}>{noStock ? t("outOfStock") : " "}</Text>
       </TouchableOpacity>
     );
@@ -1277,11 +982,12 @@ export default function POSHomeScreen() {
         <Text style={styles.listName}>{item.name}{item.sold_by_weight ? " ⚖️" : ""}</Text>
         <Text style={styles.listMeta}>{item.description || (t("stock") + ": " + item.stock_quantity)}</Text>
       </View>
-      <Text style={styles.listPrice}>
-        {item.sold_by_weight ? fm(item.price) + "/kg" : fm(item.price)}
-      </Text>
+      <Text style={styles.listPrice}>{item.sold_by_weight ? fm(item.price) + "/kg" : fm(item.price)}</Text>
     </TouchableOpacity>
   );
+
+  // 🔧 FIX: Count only pending takeaway orders for floating panel
+  const pendingTakeawayCount = takeawayOrders.filter(o => o.status === "pending").length;
 
   return (
     <View style={styles.container}>
@@ -1321,9 +1027,7 @@ export default function POSHomeScreen() {
             {tables.map((tb) => {
               const occupied = Boolean(tb.open_order);
               const tTotal = tb.open_order ? (tb.open_order.items || []).reduce((s, it) => {
-                if (it.sold_by_weight) {
-                  return s + (Number(it.weight_kg || it.quantity || 0) * Number(it.price || 0));
-                }
+                if (it.sold_by_weight) return s + (Number(it.weight_kg || it.quantity || 0) * Number(it.price || 0));
                 return s + Number(it.price || 0) * Number(it.quantity || 0);
               }, 0) : 0;
               const hasVoidedItems = tb.open_order?.voided_items?.length > 0;
@@ -1335,17 +1039,11 @@ export default function POSHomeScreen() {
                     const elapsed = Math.floor((nowTick - (item.time_start || timerStart)) / 1000 / 60);
                     const units = Math.ceil(elapsed / item.time_unit_minutes);
                     return sum + units * Number(item.price || 0);
-                  }, 0)
-                : 0;
-
+                  }, 0) : 0;
               return (
                 <View key={tb.id} style={[styles.productCard, { borderWidth: 2, borderColor: occupied ? p.danger : p.accent, position: "relative" }]}>
                   <TouchableOpacity style={{ flex: 1 }} onPress={() => handleTableTap(tb)}>
-                    {hasVoidedItems ? (
-                      <View style={styles.voidBadge}>
-                        <Text style={styles.voidBadgeText}>VOID</Text>
-                      </View>
-                    ) : null}
+                    {hasVoidedItems ? (<View style={styles.voidBadge}><Text style={styles.voidBadgeText}>VOID</Text></View>) : null}
                     {settings.tableTimingEnabled && occupied && timerStart ? (
                       <View style={[styles.timerBadge, { backgroundColor: getTimerColor(elapsedSeconds) }]}>
                         <Text style={styles.timerBadgeText}>⏱ {formatTimer(elapsedSeconds)}</Text>
@@ -1369,9 +1067,7 @@ export default function POSHomeScreen() {
             })}
           </ScrollView>
         ) : loadingProducts ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={p.accent} />
-          </View>
+          <View style={styles.center}><ActivityIndicator size="large" color={p.accent} /></View>
         ) : settings.productLayout === "list" ? (
           <ScrollView contentContainerStyle={styles.listContainer}>{filteredProducts.map(renderListRow)}</ScrollView>
         ) : (
@@ -1423,45 +1119,27 @@ export default function POSHomeScreen() {
             displayCart.map((item) => (
               <View key={item.id} style={styles.cartItem}>
                 <View style={styles.cartItemLeft}>
-                  <Text style={styles.cartItemName} numberOfLines={2}>
-                    {item.name}{item.sold_by_weight ? " ⚖️" : ""}
-                  </Text>
-                  {item.time_elapsed_minutes ? (
-                    <Text style={styles.cartItemMods}>⏱ {formatTimer(item.time_elapsed_minutes * 60)} • {item.time_units} × {item.time_unit_minutes}min</Text>
-                  ) : null}
-                  {item.modifiers && item.modifiers.length > 0 ? (
-                    <Text style={styles.cartItemMods}>{item.modifiers.map((m) => "+ " + m.name).join(", ")}</Text>
-                  ) : null}
-                  {/* ⚖️ Weight item display vs regular */}
+                  <Text style={styles.cartItemName} numberOfLines={2}>{item.name}{item.sold_by_weight ? " ⚖️" : ""}</Text>
+                  {item.time_elapsed_minutes ? (<Text style={styles.cartItemMods}>⏱ {formatTimer(item.time_elapsed_minutes * 60)} • {item.time_units} × {item.time_unit_minutes}min</Text>) : null}
+                  {item.modifiers && item.modifiers.length > 0 ? (<Text style={styles.cartItemMods}>{item.modifiers.map((m) => "+ " + m.name).join(", ")}</Text>) : null}
                   {item.sold_by_weight ? (
-                    <Text style={styles.cartItemPrice}>
-                      {Number(item.weight_kg || 0).toFixed(3)} KG × {fm(item.unit_price_per_kg)}/KG = {fm(Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0))}
-                    </Text>
+                    <Text style={styles.cartItemPrice}>{Number(item.weight_kg || 0).toFixed(3)} KG × {fm(item.unit_price_per_kg)}/KG = {fm(Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0))}</Text>
                   ) : (
                     <Text style={styles.cartItemPrice}>{item.quantity} × {fm(item.price)} = {fm(item.price * item.quantity)}</Text>
                   )}
                 </View>
                 <View style={styles.quantityControls}>
                   {item.sold_by_weight ? (
-                    // Weight items: show weight, no +/- buttons
-                    <Text style={[styles.qtyText, { color: p.accent, fontWeight: "bold" }]}>
-                      {Number(item.weight_kg || 0).toFixed(3)}kg
-                    </Text>
+                    <Text style={[styles.qtyText, { color: p.accent, fontWeight: "bold" }]}>{Number(item.weight_kg || 0).toFixed(3)}kg</Text>
                   ) : (
                     <>
-                      <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={styles.qtyBtn}>
-                        <Text style={styles.qtyBtnText}>-</Text>
-                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={styles.qtyBtn}><Text style={styles.qtyBtnText}>-</Text></TouchableOpacity>
                       <Text style={styles.qtyText}>{item.quantity}</Text>
-                      <TouchableOpacity onPress={() => updateQuantity(item.id, 1)} style={styles.qtyBtn}>
-                        <Text style={styles.qtyBtnText}>+</Text>
-                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => updateQuantity(item.id, 1)} style={styles.qtyBtn}><Text style={styles.qtyBtnText}>+</Text></TouchableOpacity>
                     </>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => voidLine(item)} style={styles.voidButton}>
-                  <Text style={styles.voidButtonText}>✕</Text>
-                </TouchableOpacity>
+                <TouchableOpacity onPress={() => voidLine(item)} style={styles.voidButton}><Text style={styles.voidButtonText}>✕</Text></TouchableOpacity>
               </View>
             ))
           )}
@@ -1469,75 +1147,55 @@ export default function POSHomeScreen() {
 
         <View style={styles.cartFooter}>
           <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>
-              {vatInclusive 
-                ? (settings.receiptLanguage === "ar" ? "المجموع (بدون ضريبة)" : "Subtotal (excl. VAT)") 
-                : (settings.receiptLanguage === "ar" ? "المجموع الفرعي" : "Subtotal")}
-            </Text>
+            <Text style={styles.totalsLabel}>{vatInclusive ? (settings.receiptLanguage === "ar" ? "المجموع (بدون ضريبة)" : "Subtotal (excl. VAT)") : (settings.receiptLanguage === "ar" ? "المجموع الفرعي" : "Subtotal")}</Text>
             <Text style={styles.totalsValue}>{fm(subtotal)}</Text>
           </View>
           <View style={styles.totalsRow}>
             <Text style={styles.totalsLabel}>{t("discount")}</Text>
             {can("discounts") ? (
-              <TouchableOpacity onPress={() => setDiscountModalVisible(true)}>
-                <Text style={styles.discountValue}>{"-" + fm(discount) + " ✏️"}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setDiscountModalVisible(true)}><Text style={styles.discountValue}>{"-" + fm(discount) + " ✏️"}</Text></TouchableOpacity>
             ) : (
               <Text style={styles.discountValue}>{"-" + fm(discount)}</Text>
             )}
           </View>
           <View style={styles.totalsRow}>
-            <Text style={styles.totalsLabel}>
-              {settings.receiptLanguage === "ar" 
-                ? "ضريبة القيمة المضافة " + (store?.tax_rate || 0) + "%" 
-                : "VAT " + (store?.tax_rate || 0) + "%"}
-            </Text>
+            <Text style={styles.totalsLabel}>{settings.receiptLanguage === "ar" ? "ضريبة القيمة المضافة " + (store?.tax_rate || 0) + "%" : "VAT " + (store?.tax_rate || 0) + "%"}</Text>
             <Text style={styles.totalsValue}>{fm(tax)}</Text>
           </View>
           <View style={[styles.totalsRow, styles.totalRow]}>
-            <Text style={styles.bold}>
-              {vatInclusive
-                ? (settings.receiptLanguage === "ar" ? "الإجمالي (شامل الضريبة)" : "Total (incl. VAT)")
-                : (settings.receiptLanguage === "ar" ? "الإجمالي" : "Total")}
-            </Text>
+            <Text style={styles.bold}>{vatInclusive ? (settings.receiptLanguage === "ar" ? "الإجمالي (شامل الضريبة)" : "Total (incl. VAT)") : (settings.receiptLanguage === "ar" ? "الإجمالي" : "Total")}</Text>
             <Text style={styles.bold}>{fm(total)}</Text>
           </View>
-
           {activeTable ? (
             <TouchableOpacity style={[styles.payButton, { backgroundColor: "#64748B" }]} onPress={parkToTable}>
               <Text style={styles.payButtonText}>🪑 {t("parkOn")} {activeTable.name}</Text>
             </TouchableOpacity>
           ) : null}
-
           {settings.cashDrawer && settings.cashDrawer.enabled ? (
-            <TouchableOpacity
-              style={[styles.payButton, { backgroundColor: "#F59E0B" }]}
-              onPress={async () => {
-                try {
-                  const mod = await import("../services/printerService");
-                  const res = await mod.openCashDrawer(settings);
-                  if (!res.success) Alert.alert("Drawer Error", res.error || "Could not open drawer.");
-                } catch (e) {
-                  Alert.alert("Drawer Error", e.message);
-                }
-              }}
-            >
+            <TouchableOpacity style={[styles.payButton, { backgroundColor: "#F59E0B" }]} onPress={async () => {
+              try {
+                const mod = await import("../services/printerService");
+                const res = await mod.openCashDrawer(settings);
+                if (!res.success) Alert.alert("Drawer Error", res.error || "Could not open drawer.");
+              } catch (e) { Alert.alert("Drawer Error", e.message); }
+            }}>
               <Text style={styles.payButtonText}>💰 Open Cash Drawer</Text>
             </TouchableOpacity>
           ) : null}
-
           <TouchableOpacity style={[styles.payButton, { marginBottom: 0 }]} onPress={openPaymentModal} disabled={processing}>
             <Text style={styles.payButtonText}>{processing ? t("processing") : t("charge") + " " + fm(total)}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {(qrOrders.length + takeawayOrders.length) > 0 && (
+      {/* 🔧 FIX: Only show panel when there are PENDING orders */}
+      {(qrOrders.length + pendingTakeawayCount) > 0 && (
         <View style={styles.qrPanel}>
           <View style={styles.qrPanelHeader}>
             <Text style={styles.qrPanelTitle}>📲 Orders</Text>
             <View style={styles.qrPanelBadge}>
-              <Text style={styles.qrPanelBadgeText}>{qrOrders.length + takeawayOrders.length}</Text>
+              {/* 🔧 FIX: Badge shows only pending count */}
+              <Text style={styles.qrPanelBadgeText}>{qrOrders.length + pendingTakeawayCount}</Text>
             </View>
           </View>
           <ScrollView style={styles.qrPanelList}>
@@ -1545,13 +1203,9 @@ export default function POSHomeScreen() {
               <View key={order.id} style={styles.qrOrderItem}>
                 <View style={styles.qrOrderHeader}>
                   <Text style={styles.qrOrderTable}>🪑 {getTableName(order.table_id)}</Text>
-                  <Text style={styles.qrOrderTime}>
-                    {new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </Text>
+                  <Text style={styles.qrOrderTime}>{new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
                 </View>
-                <Text style={styles.qrOrderItems}>
-                  {order.items.length} item{order.items.length !== 1 ? "s" : ""}: {order.items.map((i) => i.name || i.product_name || "Item").join(", ")}
-                </Text>
+                <Text style={styles.qrOrderItems}>{order.items.length} item{order.items.length !== 1 ? "s" : ""}: {order.items.map((i) => i.name || i.product_name || "Item").join(", ")}</Text>
                 <View style={styles.qrOrderActions}>
                   <TouchableOpacity style={styles.qrAcceptBtn} onPress={() => handleQrAccept(order.id)}>
                     <Text style={styles.qrAcceptText}>✅ Accept</Text>
@@ -1563,36 +1217,32 @@ export default function POSHomeScreen() {
               </View>
             ))}
 
-            {/* 🥡 TAKEAWAY ORDERS SECTION */}
-            {takeawayOrders.length > 0 ? (
+            {/* 🥡 TAKEAWAY ORDERS SECTION - 🔧 FIX: Only show pending */}
+            {pendingTakeawayCount > 0 ? (
               <View>
                 <View style={{ backgroundColor: "#F59E0B", padding: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ color: "#fff", fontSize: 14, fontWeight: "bold" }}>🥡 TAKEAWAY ORDERS</Text>
                   <View style={{ backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "bold" }}>{takeawayOrders.length}</Text>
+                    {/* 🔧 FIX: Show only pending count */}
+                    <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "bold" }}>{pendingTakeawayCount}</Text>
                   </View>
                 </View>
-                {takeawayOrders.map((order) => {
+                {/* 🔧 FIX: Map only pending orders */}
+                {takeawayOrders.filter(o => o.status === "pending").map((order) => {
                   const isPending = order.status === "pending";
                   return (
                     <View key={"tk-" + order.id} style={styles.qrOrderItem}>
                       <View style={{ backgroundColor: isPending ? "#F59E0B" : "#16A34A", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: "flex-start", marginBottom: 6 }}>
-                        <Text style={{ color: "#fff", fontSize: 10, fontWeight: "bold" }}>
-                          {isPending ? "🟡 PENDING" : "🟢 PREPARING"}
-                        </Text>
+                        <Text style={{ color: "#fff", fontSize: 10, fontWeight: "bold" }}>{isPending ? "🟡 PENDING" : "🟢 PREPARING"}</Text>
                       </View>
                       <View style={styles.qrOrderHeader}>
                         <Text style={styles.qrOrderTable}>🥡 #{String(order.id).padStart(4, "0")}</Text>
-                        <Text style={styles.qrOrderTime}>
-                          {new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </Text>
+                        <Text style={styles.qrOrderTime}>{new Date(order.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
                       </View>
                       <Text style={{ fontSize: 13, fontWeight: "600", color: p.text, marginBottom: 4 }}>
                         👤 {order.customer_name || "Guest"}{order.customer_phone ? " • 📞 " + order.customer_phone : ""}
                       </Text>
-                      <Text style={styles.qrOrderItems}>
-                        {(order.items || []).length} items: {(order.items || []).map((i) => i.name).join(", ")}
-                      </Text>
+                      <Text style={styles.qrOrderItems}>{(order.items || []).length} items: {(order.items || []).map((i) => i.name).join(", ")}</Text>
                       <Text style={{ fontSize: 15, fontWeight: "900", color: p.accent, marginBottom: 8 }}>{fm(order.total)}</Text>
                       <View style={styles.qrOrderActions}>
                         {isPending ? (
@@ -1623,10 +1273,7 @@ export default function POSHomeScreen() {
         product={variantPickerProduct}
         visible={Boolean(variantPickerProduct)}
         onClose={() => setVariantPickerProduct(null)}
-        onSelectVariant={(product, variant) => {
-          setVariantPickerProduct(null);
-          proceedToAdd(product, variant);
-        }}
+        onSelectVariant={(product, variant) => { setVariantPickerProduct(null); proceedToAdd(product, variant); }}
       />
 
       <ModifierModal
@@ -1634,117 +1281,50 @@ export default function POSHomeScreen() {
         product={modifierPick ? modifierPick.product : null}
         modifiers={modifiers}
         onClose={() => setModifierPick(null)}
-        onConfirm={(selected) => {
-          if (modifierPick) addToCart(modifierPick.product, modifierPick.variant, selected);
-          setModifierPick(null);
-        }}
+        onConfirm={(selected) => { if (modifierPick) addToCart(modifierPick.product, modifierPick.variant, selected); setModifierPick(null); }}
       />
 
       <BarcodeScannerModal visible={scannerVisible} onClose={() => setScannerVisible(false)} onScanned={handleBarcodeScanned} />
 
-      {/* ========== ⚖️ WEIGHT INPUT MODAL ========== */}
       <Modal visible={Boolean(weightModalProduct)} transparent animationType="fade" onRequestClose={() => { setWeightModalProduct(null); setWeightInput(""); }}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
             <Text style={styles.paymentTitle}>⚖️ {weightModalProduct ? weightModalProduct.name : ""}</Text>
-            <Text style={{ fontSize: 16, color: p.muted, marginBottom: 20, textAlign: "center" }}>
-              {fm(weightModalVariant ? Number(weightModalVariant.price || 0) : 0)} per KG
-            </Text>
-
-            {/* Weight unit toggle */}
+            <Text style={{ fontSize: 16, color: p.muted, marginBottom: 20, textAlign: "center" }}>{fm(weightModalVariant ? Number(weightModalVariant.price || 0) : 0)} per KG</Text>
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: weightUnit === "kg" ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: weightUnit === "kg" ? p.accent : p.border }}
-                onPress={() => setWeightUnit("kg")}
-              >
+              <TouchableOpacity style={{ flex: 1, backgroundColor: weightUnit === "kg" ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: weightUnit === "kg" ? p.accent : p.border }} onPress={() => setWeightUnit("kg")}>
                 <Text style={{ color: weightUnit === "kg" ? "#fff" : p.text, fontWeight: "bold", fontSize: 15 }}>Kilograms</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: weightUnit === "g" ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: weightUnit === "g" ? p.accent : p.border }}
-                onPress={() => setWeightUnit("g")}
-              >
+              <TouchableOpacity style={{ flex: 1, backgroundColor: weightUnit === "g" ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: weightUnit === "g" ? p.accent : p.border }} onPress={() => setWeightUnit("g")}>
                 <Text style={{ color: weightUnit === "g" ? "#fff" : p.text, fontWeight: "bold", fontSize: 15 }}>Grams</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Quick weight buttons */}
             <View style={{ flexDirection: "row", gap: 6, marginBottom: 8, flexWrap: "wrap", justifyContent: "center" }}>
-              {weightUnit === "kg" 
-                ? [0.100, 0.250, 0.500, 0.750, 1.0, 1.5, 2.0].map((w) => (
-                    <TouchableOpacity
-                      key={w}
-                      style={{
-                        backgroundColor: Number(weightInput) === w ? p.accent : p.surface2,
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: Number(weightInput) === w ? p.accent : p.border,
-                        marginBottom: 6,
-                      }}
-                      onPress={() => setWeightInput(String(w))}
-                    >
-                      <Text style={{ color: Number(weightInput) === w ? "#fff" : p.text, fontWeight: "bold", fontSize: 13 }}>
-                        {w}
-                      </Text>
-                    </TouchableOpacity>
-                  ))
-                : [100, 250, 500, 750, 1000, 1500, 2000].map((w) => (
-                    <TouchableOpacity
-                      key={w}
-                      style={{
-                        backgroundColor: Number(weightInput) === w ? p.accent : p.surface2,
-                        borderRadius: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderWidth: 1,
-                        borderColor: Number(weightInput) === w ? p.accent : p.border,
-                        marginBottom: 6,
-                      }}
-                      onPress={() => setWeightInput(String(w))}
-                    >
-                      <Text style={{ color: Number(weightInput) === w ? "#fff" : p.text, fontWeight: "bold", fontSize: 13 }}>
-                        {w}g
-                      </Text>
-                    </TouchableOpacity>
-                  ))
-              }
+              {weightUnit === "kg" ? [0.100, 0.250, 0.500, 0.750, 1.0, 1.5, 2.0].map((w) => (
+                <TouchableOpacity key={w} style={{ backgroundColor: Number(weightInput) === w ? p.accent : p.surface2, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: Number(weightInput) === w ? p.accent : p.border, marginBottom: 6 }} onPress={() => setWeightInput(String(w))}>
+                  <Text style={{ color: Number(weightInput) === w ? "#fff" : p.text, fontWeight: "bold", fontSize: 13 }}>{w}</Text>
+                </TouchableOpacity>
+              )) : [100, 250, 500, 750, 1000, 1500, 2000].map((w) => (
+                <TouchableOpacity key={w} style={{ backgroundColor: Number(weightInput) === w ? p.accent : p.surface2, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: Number(weightInput) === w ? p.accent : p.border, marginBottom: 6 }} onPress={() => setWeightInput(String(w))}>
+                  <Text style={{ color: Number(weightInput) === w ? "#fff" : p.text, fontWeight: "bold", fontSize: 13 }}>{w}g</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-
-            {/* Weight input */}
             <Text style={styles.paymentLabel}>Weight ({weightUnit === "kg" ? "Kilograms" : "Grams"})</Text>
-            <TextInput
-              style={styles.paymentInput}
-              value={weightInput}
-              onChangeText={setWeightInput}
-              keyboardType="decimal-pad"
-              placeholder={weightUnit === "kg" ? "0.750" : "750"}
-              placeholderTextColor={p.muted}
-              autoFocus
-            />
-
-            {/* Live total calculation */}
+            <TextInput style={styles.paymentInput} value={weightInput} onChangeText={setWeightInput} keyboardType="decimal-pad" placeholder={weightUnit === "kg" ? "0.750" : "750"} placeholderTextColor={p.muted} autoFocus />
             <View style={{ backgroundColor: p.surface2, borderRadius: 12, padding: 16, marginBottom: 20, alignItems: "center" }}>
               <Text style={{ fontSize: 14, color: p.muted, marginBottom: 4 }}>Total</Text>
-              <Text style={{ fontSize: 28, fontWeight: "900", color: p.accent }}>
-                {fm(weightModalLiveTotal)}
-              </Text>
+              <Text style={{ fontSize: 28, fontWeight: "900", color: p.accent }}>{fm(weightModalLiveTotal)}</Text>
               <Text style={{ fontSize: 12, color: p.muted, marginTop: 4 }}>
                 {weightUnit === "g" && weightInput ? (Number(weightInput) / 1000).toFixed(3) + " KG" : (weightInput || "0") + " KG"}
                 {" × "}{fm(weightModalVariant ? Number(weightModalVariant.price || 0) : 0)}/KG
               </Text>
             </View>
-
-            {/* Buttons */}
             <View style={styles.paymentButtonRow}>
               <TouchableOpacity style={styles.paymentCancelButton} onPress={() => { setWeightModalProduct(null); setWeightInput(""); setWeightUnit("kg"); }}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.paymentConfirmButton, (!weightInput || Number(weightInput) <= 0) && styles.paymentConfirmDisabled]}
-                onPress={addWeightItemToCart}
-                disabled={!weightInput || Number(weightInput) <= 0}
-              >
+              <TouchableOpacity style={[styles.paymentConfirmButton, (!weightInput || Number(weightInput) <= 0) && styles.paymentConfirmDisabled]} onPress={addWeightItemToCart} disabled={!weightInput || Number(weightInput) <= 0}>
                 <Text style={styles.paymentConfirmText}>Add to Cart</Text>
               </TouchableOpacity>
             </View>
@@ -1752,48 +1332,27 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* ========== PRE-PRINT MODAL ========== */}
       <Modal visible={Boolean(preprintTable)} transparent animationType="fade" onRequestClose={() => setPreprintTable(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
             <Text style={styles.paymentTitle}>🖨️ Pre-print Bill</Text>
-            <Text style={{ fontSize: 18, fontWeight: "bold", color: p.text, marginBottom: 6 }}>
-              🪑 {preprintTable ? preprintTable.name : ""}
-            </Text>
-            <Text style={{ fontSize: 14, color: p.muted, marginBottom: 16 }}>
-              {preprintItems.length} item{preprintItems.length !== 1 ? "s" : ""} • Running total: {preprintTotals ? fm(preprintTotals.total) : ""}
-            </Text>
-
+            <Text style={{ fontSize: 18, fontWeight: "bold", color: p.text, marginBottom: 6 }}>🪑 {preprintTable ? preprintTable.name : ""}</Text>
+            <Text style={{ fontSize: 14, color: p.muted, marginBottom: 16 }}>{preprintItems.length} item{preprintItems.length !== 1 ? "s" : ""} • Running total: {preprintTotals ? fm(preprintTotals.total) : ""}</Text>
             <ScrollView style={{ maxHeight: 200, marginBottom: 16, borderWidth: 1, borderColor: p.border, borderRadius: 8, paddingHorizontal: 12 }}>
               {preprintItems.map((item, idx) => (
                 <View key={idx} style={styles.preprintItemRow}>
                   <Text style={styles.preprintItemName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.preprintItemQty}>
-                    {item.sold_by_weight ? Number(item.weight_kg || 0).toFixed(3) + "kg" : item.quantity + "x"}
-                  </Text>
-                  <Text style={styles.preprintItemPrice}>
-                    {item.sold_by_weight 
-                      ? fm(Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || item.price || 0))
-                      : fm(item.price * item.quantity)}
-                  </Text>
+                  <Text style={styles.preprintItemQty}>{item.sold_by_weight ? Number(item.weight_kg || 0).toFixed(3) + "kg" : item.quantity + "x"}</Text>
+                  <Text style={styles.preprintItemPrice}>{item.sold_by_weight ? fm(Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || item.price || 0)) : fm(item.price * item.quantity)}</Text>
                 </View>
               ))}
             </ScrollView>
-
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: preprintIsCopy ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: preprintIsCopy ? p.accent : p.border }}
-                onPress={() => setPreprintIsCopy(!preprintIsCopy)}
-              >
-                <Text style={{ color: preprintIsCopy ? "#fff" : p.text, fontWeight: "bold", fontSize: 14 }}>
-                  {preprintIsCopy ? "✅ Print as COPY" : "⬜ Print as Original"}
-                </Text>
+              <TouchableOpacity style={{ flex: 1, backgroundColor: preprintIsCopy ? p.accent : p.surface2, borderRadius: 10, paddingVertical: 12, alignItems: "center", borderWidth: 2, borderColor: preprintIsCopy ? p.accent : p.border }} onPress={() => setPreprintIsCopy(!preprintIsCopy)}>
+                <Text style={{ color: preprintIsCopy ? "#fff" : p.text, fontWeight: "bold", fontSize: 14 }}>{preprintIsCopy ? "✅ Print as COPY" : "⬜ Print as Original"}</Text>
               </TouchableOpacity>
             </View>
-            <Text style={{ fontSize: 12, color: p.muted, marginBottom: 20, textAlign: "center" }}>
-              COPY adds a "★ DUPLICATE BILL ★" header so it's not confused with the final receipt.
-            </Text>
-
+            <Text style={{ fontSize: 12, color: p.muted, marginBottom: 20, textAlign: "center" }}>COPY adds a "★ DUPLICATE BILL ★" header so it's not confused with the final receipt.</Text>
             <View style={styles.paymentButtonRow}>
               <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setPreprintTable(null)}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
@@ -1811,7 +1370,6 @@ export default function POSHomeScreen() {
           <View style={styles.paymentCard}>
             <Text style={styles.paymentTitle}>{t("payment")}</Text>
             <Text style={styles.paymentTotal}>{t("total")}: {fm(total)}</Text>
-
             {settings.diningEnabled ? (
               <View style={styles.paymentMethodRow}>
                 <TouchableOpacity style={[styles.paymentMethodButton, diningOption === "dine_in" && styles.paymentMethodActive]} onPress={() => setDiningOption("dine_in")}>
@@ -1822,7 +1380,6 @@ export default function POSHomeScreen() {
                 </TouchableOpacity>
               </View>
             ) : null}
-
             <View style={styles.paymentMethodRow}>
               <TouchableOpacity style={[styles.paymentMethodButton, paymentMethod === "cash" && styles.paymentMethodActive]} onPress={() => setPaymentMethod("cash")}>
                 <Text style={[styles.paymentMethodText, paymentMethod === "cash" && styles.paymentMethodTextActive]}>{t("cash")}</Text>
@@ -1834,7 +1391,6 @@ export default function POSHomeScreen() {
                 <Text style={[styles.paymentMethodText, paymentMethod === "split" && styles.paymentMethodTextActive]}>{t("split")}</Text>
               </TouchableOpacity>
             </View>
-
             {paymentMethod === "cash" ? (
               <View>
                 <Text style={styles.paymentLabel}>{t("amountReceived")}</Text>
@@ -1842,7 +1398,6 @@ export default function POSHomeScreen() {
                 <Text style={styles.paymentChange}>{t("change")}: {fm(changeDue)}</Text>
               </View>
             ) : null}
-
             {paymentMethod === "split" ? (
               <View>
                 <Text style={styles.paymentLabel}>{t("cashPart")}</Text>
@@ -1850,7 +1405,6 @@ export default function POSHomeScreen() {
                 <Text style={styles.paymentChange}>{t("cardPart")}: {fm(splitCard)}</Text>
               </View>
             ) : null}
-
             <View style={styles.paymentButtonRow}>
               <TouchableOpacity style={styles.paymentCancelButton} onPress={closePaymentClearTakeaway}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
@@ -1912,14 +1466,7 @@ export default function POSHomeScreen() {
             <Text style={styles.paymentLabel}>{t("amountLabel")}</Text>
             <TextInput style={styles.paymentInput} value={cashAmount} onChangeText={setCashAmount} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={p.muted} />
             <Text style={styles.paymentLabel}>{t("note")}</Text>
-            <TextInput
-              style={styles.noteInput}
-              value={cashNote}
-              onChangeText={setCashNote}
-              placeholder={cashModal === "cash_in" ? "e.g. Owner added float" : "e.g. Bought cleaning supplies"}
-              placeholderTextColor={p.muted}
-              multiline
-            />
+            <TextInput style={styles.noteInput} value={cashNote} onChangeText={setCashNote} placeholder={cashModal === "cash_in" ? "e.g. Owner added float" : "e.g. Bought cleaning supplies"} placeholderTextColor={p.muted} multiline />
             <View style={styles.paymentButtonRow}>
               <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setCashModal(null)}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
@@ -1937,14 +1484,7 @@ export default function POSHomeScreen() {
           <View style={styles.paymentCard}>
             <Text style={styles.paymentTitle}>{t("voidReason") || "Void Reason"}</Text>
             <Text style={styles.paymentLabel}>{t("reason") || "Why is this item being voided?"}</Text>
-            <TextInput
-              style={styles.noteInput}
-              placeholder="e.g. Customer changed mind, wrong item, etc."
-              placeholderTextColor={p.muted}
-              multiline
-              autoFocus
-              onChangeText={(text) => setVoidReasonModal({ ...voidReasonModal, _reason: text })}
-            />
+            <TextInput style={styles.noteInput} placeholder="e.g. Customer changed mind, wrong item, etc." placeholderTextColor={p.muted} multiline autoFocus onChangeText={(text) => setVoidReasonModal({ ...voidReasonModal, _reason: text })} />
             <View style={styles.paymentButtonRow}>
               <TouchableOpacity style={styles.paymentCancelButton} onPress={() => setVoidReasonModal(null)}>
                 <Text style={styles.paymentCancelText}>{t("cancel")}</Text>
