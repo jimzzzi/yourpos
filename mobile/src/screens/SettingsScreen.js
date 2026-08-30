@@ -4,6 +4,7 @@ import { useSettings } from "../context/SettingsContext";
 import { useAuth } from "../auth/AuthContext";
 import { useI18n } from "../i18n/I18nContext";
 import { backofficeApi } from "../api/backoffice";
+import { api } from "../api/client";
 import { printReceipt } from "../services/printerService";
 import { telegramApi } from "../api/telegram";
 import { uploadImage } from "../services/uploadService";
@@ -77,6 +78,30 @@ function QROrderingCard() {
     } catch (e) { Alert.alert("❌", e.message); }
   };
 
+  // 🥡 Print Takeaway QR with Secure Token
+  const printTakeawayQR = async () => {
+    try {
+      const res = await api.get("/takeaway/qr-link");
+      const token = res.data.token;
+      
+      if (!token) {
+        Alert.alert("❌", "Takeaway token not found. Contact support.");
+        return;
+      }
+
+      const takeawayUrl = qrBase + "/?takeaway=" + token;
+
+      const mod = await import("../services/printerService");
+      mod.printQRSheet({
+        storeName,
+        tableName: "TAKEAWAY",
+        qrUrl: takeawayUrl,
+      });
+    } catch (e) {
+      Alert.alert("❌", e.message);
+    }
+  };
+
   return (
     <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
       <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>📲 QR Ordering (Self-Order)</Text>
@@ -101,6 +126,10 @@ function QROrderingCard() {
           ))}
           <TouchableOpacity style={{ backgroundColor: "#0F172A", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 6 }} onPress={printAll}>
             <Text style={{ color: "#fff", fontWeight: "bold" }}>🖨 Print ALL Table QRs</Text>
+          </TouchableOpacity>
+          {/* 🥡 Print Takeaway QR with Secure Token */}
+          <TouchableOpacity style={{ backgroundColor: "#E8590C", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 6 }} onPress={printTakeawayQR}>
+            <Text style={{ color: "#fff", fontWeight: "bold" }}>🥡 Print TAKEAWAY QR (Counter Sticker)</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 8 }}>💡 Tip: print stickers from your LIVE app (Vercel) so the QR links to your online menu.</Text>
         </View>
