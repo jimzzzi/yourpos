@@ -81,6 +81,9 @@ const AR_LABELS = {
   date: "التاريخ",
   table: "الطاولة",
   copy: "★ نسخة من الفاتورة ★",
+  customer: "العميل",
+  phone: "الهاتف",
+  note: "ملاحظة",
 };
 
 function getLbl(key, settings, defaultEn) {
@@ -89,6 +92,22 @@ function getLbl(key, settings, defaultEn) {
     return AR_LABELS[key];
   }
   return defaultEn;
+}
+
+// 🥡 Build customer info lines for receipts
+function buildCustomerLines(args, width, isArabic) {
+  const lines = [];
+  const name = (args && args.customerName) || "";
+  const phone = (args && args.customerPhone) || "";
+  const note = (args && args.note) || "";
+  if (!name && !phone && !note) return lines;
+  lines.push(divider(width));
+  lines.push(centerText("👤 " + getLbl("customer", args.settings, "CUSTOMER INFO"), width));
+  if (name) lines.push(" " + getLbl("customer", args.settings, "Name") + ": " + name);
+  if (phone) lines.push(" " + getLbl("phone", args.settings, "Phone") + ": " + phone);
+  if (note) lines.push(" " + getLbl("note", args.settings, "Note") + ": " + note);
+  lines.push(divider(width));
+  return lines;
 }
 
 function buildReceiptParts(args) {
@@ -108,6 +127,9 @@ function buildReceiptParts(args) {
   const billLine = a.billNumber ? getLbl("billNo", a.settings, "Bill No") + ": " + String(a.billNumber).padStart(6, "0") : null;
   const diningLine = a.dining ? (a.dining === "takeaway" ? getLbl("takeaway", a.settings, "TAKEAWAY") : getLbl("dineIn", a.settings, "DINE IN")) : null;
   const tableLine = a.table ? getLbl("table", a.settings, "TABLE") + ": " + a.table : null;
+
+  // 🥡 Customer info lines
+  const customerLines = buildCustomerLines(a, width, isArabic);
 
   const itemsLines = [];
   (a.items || []).forEach((item) => {
@@ -178,7 +200,7 @@ function buildReceiptParts(args) {
     }
   }
 
-  return { rs, width, headerLines, footerLines, dateLine, printedLine, billLine, diningLine, tableLine, itemsLines, totals, totalLabel, totalValue, pays };
+  return { rs, width, headerLines, footerLines, dateLine, printedLine, billLine, diningLine, tableLine, customerLines, itemsLines, totals, totalLabel, totalValue, pays };
 }
 
 export function buildReceiptText(args) {
@@ -197,6 +219,10 @@ export function buildReceiptText(args) {
   if (p.billLine) lines.push(centerText(p.billLine, p.width));
   if (p.diningLine) lines.push(centerText(p.diningLine, p.width));
   if (p.tableLine) lines.push(centerText(p.tableLine, p.width));
+  
+  // 🥡 Customer info
+  p.customerLines.forEach((l) => lines.push(l));
+  
   lines.push(divider(p.width));
   p.itemsLines.forEach((l) => lines.push(l));
   p.totals.forEach((l) => lines.push(l));
@@ -233,6 +259,20 @@ export function buildReceiptHtml(args) {
   if (p.billLine) headerHtml += '<div class="bigcenter">' + escapeHtml(p.billLine) + "</div>";
   if (p.diningLine) headerHtml += '<div class="bigcenter">' + escapeHtml(p.diningLine) + "</div>";
   if (p.tableLine) headerHtml += '<div class="c">' + escapeHtml(p.tableLine) + "</div>";
+  
+  // 🥡 Customer info block (takeaway)
+  const cName = (args && args.customerName) || "";
+  const cPhone = (args && args.customerPhone) || "";
+  const cNote = (args && args.note) || "";
+  if (cName || cPhone || cNote) {
+    headerHtml += '<div style="border-top: 2px dashed #000; border-bottom: 2px dashed #000; margin: 6px 0; padding: 6px 4px;">';
+    headerHtml += '<div class="bigcenter" style="font-size: 14px; margin-bottom: 4px;">👤 ' + escapeHtml(getLbl("customer", args.settings, "CUSTOMER INFO")) + "</div>";
+    if (cName) headerHtml += '<div class="c" style="font-size: 13px;">' + escapeHtml(getLbl("customer", args.settings, "Name")) + ": " + escapeHtml(cName) + "</div>";
+    if (cPhone) headerHtml += '<div class="c" style="font-size: 13px;">' + escapeHtml(getLbl("phone", args.settings, "Phone")) + ": " + escapeHtml(cPhone) + "</div>";
+    if (cNote) headerHtml += '<div class="c" style="font-size: 13px; font-style: italic;">' + escapeHtml(getLbl("note", args.settings, "Note")) + ": " + escapeHtml(cNote) + "</div>";
+    headerHtml += "</div>";
+  }
+  
   headerHtml += '<div class="c">' + escapeHtml(divider(p.width)) + "</div>";
 
   let footerHtml = "";
@@ -271,6 +311,9 @@ export function buildKitchenTicketHtml(args) {
   const voidedItem = a.voidedItem;
   const voidedBy = a.voidedBy || "";
   const voidReason = a.voidReason || "";
+  const cName = a.customerName || "";
+  const cPhone = a.customerPhone || "";
+  const cNote = a.note || "";
   const paper = "80mm";
   const padding = "3mm 4mm";
   const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -289,42 +332,32 @@ export function buildKitchenTicketHtml(args) {
   html += "html, body { margin: 0; padding: 0; }";
   html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 15px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
   
-  // Big bold header
-    html += ".header { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 3px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
-  
-  // Table box - BIG and bold
+  html += ".header { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 3px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
   html += ".table-box { text-align: center; font-size: 42px; font-weight: 900; padding: 10px 6px; border: 4px solid #000; margin: 8px 0; letter-spacing: 2px; }";
-  
-  // Meta info (bill number, dining, time)
   html += ".meta { text-align: center; font-size: 15px; margin: 4px 0; font-weight: bold; }";
   html += ".meta-row { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; padding: 0 4px; }";
-  
-  // Separator
   html += ".divider { border-top: 3px dashed #000; margin: 8px 0; }";
   html += ".divider-thick { border-top: 4px solid #000; margin: 8px 0; }";
-  
-  // Item - BIG and clear
   html += ".item { margin: 10px 0; padding: 8px 6px; border-bottom: 3px solid #000; }";
   html += ".item-row { display: flex; align-items: baseline; gap: 8px; }";
   html += ".item-qty { font-size: 26px; font-weight: 900; min-width: 50px; }";
   html += ".item-name { font-size: 19px; font-weight: 900; flex: 1; line-height: 1.3; }";
   html += ".item-desc { font-size: 13px; font-weight: bold; margin-top: 4px; padding-left: 58px; color: #333; }";
-  
-  // Modifier - clear and bold
   html += ".modifier { font-size: 15px; font-weight: 900; padding-left: 58px; margin-top: 4px; }";
   html += ".modifier::before { content: '★ '; }";
-  
-  // Void styling
   html += ".void-line { text-align: center; font-size: 14px; font-weight: 900; margin: 6px 0; }";
   html += ".void-reason { text-align: center; font-size: 13px; font-weight: bold; margin: 4px 0; padding: 6px; border: 2px solid #000; }";
-  
-  // Footer
   html += ".footer { margin-top: 12px; text-align: center; font-size: 13px; font-weight: bold; border-top: 3px solid #000; padding-top: 8px; }";
   html += ".footer-time { font-size: 18px; font-weight: 900; margin-top: 4px; }";
   
+  // 🥡 Customer info styling (BOLD and prominent for takeaway)
+  html += ".customer-box { border: 3px solid #000; margin: 8px 0; padding: 8px; background: #fff; }";
+  html += ".customer-title { text-align: center; font-size: 16px; font-weight: 900; margin-bottom: 6px; letter-spacing: 1px; }";
+  html += ".customer-line { font-size: 15px; font-weight: bold; margin: 3px 0; }";
+  html += ".customer-note { font-size: 14px; font-weight: bold; margin-top: 6px; padding: 6px; border: 2px dashed #000; font-style: italic; }";
+  
   html += "</style></head><body>";
 
-  // Header banner
   html += '<div class="header">' + escapeHtml(headerText) + "</div>";
 
   if (type === "VOID" && voidedItem) {
@@ -338,10 +371,8 @@ export function buildKitchenTicketHtml(args) {
     if (voidReason) html += '<div class="void-reason">Reason: ' + escapeHtml(voidReason) + "</div>";
     if (voidedBy) html += '<div class="void-line">Voided by: ' + escapeHtml(voidedBy) + "</div>";
   } else {
-    // Table name BIG
     html += '<div class="table-box">' + escapeHtml(table) + "</div>";
 
-    // Bill info row
     if (billNumber || a.dining) {
       html += '<div class="meta-row">';
       if (billNumber) html += '<span>Bill #' + escapeHtml(billNumber) + "</span>";
@@ -349,9 +380,18 @@ export function buildKitchenTicketHtml(args) {
       html += "</div>";
     }
 
+    // 🥡 CUSTOMER INFO BOX - BIG AND BOLD for takeaway
+    if (cName || cPhone || cNote) {
+      html += '<div class="customer-box">';
+      html += '<div class="customer-title">👤 CUSTOMER INFO</div>';
+      if (cName) html += '<div class="customer-line">Name: ' + escapeHtml(cName) + "</div>";
+      if (cPhone) html += '<div class="customer-line">Phone: ' + escapeHtml(cPhone) + "</div>";
+      if (cNote) html += '<div class="customer-note">📝 ' + escapeHtml(cNote) + "</div>";
+      html += "</div>";
+    }
+
     html += '<div class="divider-thick"></div>';
 
-    // Items - BIG and clear
     items.forEach((item) => {
       html += '<div class="item">';
       html += '<div class="item-row">';
@@ -367,7 +407,6 @@ export function buildKitchenTicketHtml(args) {
     });
   }
 
-  // Footer with time
   html += '<div class="footer">';
   html += '<div>' + escapeHtml(dateStr) + "</div>";
   html += '<div class="footer-time">⏰ ' + escapeHtml(now) + "</div>";
@@ -386,6 +425,9 @@ export function buildKitchenTicketText(args) {
   const voidedItem = a.voidedItem;
   const voidedBy = a.voidedBy || "";
   const voidReason = a.voidReason || "";
+  const cName = a.customerName || "";
+  const cPhone = a.customerPhone || "";
+  const cNote = a.note || "";
   const width = 42;
 
   const thickLine = "=".repeat(width);
@@ -398,13 +440,11 @@ export function buildKitchenTicketText(args) {
 
   let lines = [];
 
-  // Header with border (matches HTML design)
   lines.push(thickLine);
   lines.push(centerText(headerText, width));
   lines.push(thickLine);
   lines.push("");
 
-  // Table name BIG with border
   lines.push(thickLine);
   lines.push(centerText(table, width));
   lines.push(thickLine);
@@ -429,13 +469,28 @@ export function buildKitchenTicketText(args) {
       lines.push("VOIDED BY: " + voidedBy.toUpperCase());
     }
   } else {
-    // Bill info
     if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
-    if (a.dining) lines.push(centerText(a.dining === "takeaway" ? "TAKEAWAY" : "DINE-IN", width));
+    if (a.dining) lines.push(centerText(a.dining === "takeaway" ? "🥡 TAKEAWAY" : "🍽 DINE-IN", width));
     lines.push("");
+
+    // 🥡 CUSTOMER INFO - BOLD AND PROMINENT
+    if (cName || cPhone || cNote) {
+      lines.push(thickLine);
+      lines.push(centerText("👤 CUSTOMER INFO", width));
+      lines.push(thickLine);
+      if (cName) lines.push(" NAME: " + cName.toUpperCase());
+      if (cPhone) lines.push(" PHONE: " + cPhone);
+      if (cNote) {
+        lines.push("");
+        lines.push(" 📝 NOTE:");
+        lines.push(" " + cNote.toUpperCase());
+      }
+      lines.push(thickLine);
+      lines.push("");
+    }
+
     lines.push(thinLine);
 
-    // Items - BIG and clear
     items.forEach((item) => {
       const qty = String(item.quantity || 1) + "x";
       const name = String(item.name || "Item").toUpperCase();
@@ -453,7 +508,6 @@ export function buildKitchenTicketText(args) {
     });
   }
 
-  // Footer with time
   lines.push("");
   const now = new Date();
   const dateStr = now.toLocaleDateString();
@@ -569,8 +623,6 @@ export async function printReceipt(args) {
       return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
     }
 
-    // ✅ Receipt ONLY uses browser print (Windows default = USB receipt printer)
-    // NO network printing for receipts - only browser
     const html = buildReceiptHtml(args);
     return printViaBrowser(html);
   } catch (error) {
@@ -581,6 +633,12 @@ export async function printReceipt(args) {
 
 export async function printKitchenTicket(args) {
   try {
+    const type = String(args.type || "NEW").toUpperCase();
+
+    if (type !== "NEW") {
+      return { success: true, skipped: true, reason: "Only NEW orders print to kitchen" };
+    }
+
     const settings = (args && args.settings) || {};
     let kp = args.printer || null;
     if (!kp) {
@@ -591,7 +649,13 @@ export async function printKitchenTicket(args) {
       return { success: false, error: "Kitchen printer disabled." };
     }
 
-    // ✅ If kitchen printer is NETWORK, send plain text to its IP
+    const isArabic = settings.receiptLanguage === "ar";
+
+    if (isArabic) {
+      const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
+      return printViaBrowser(html);
+    }
+
     if (kp.connection === "network" && kp.address) {
       try {
         const text = buildKitchenTicketText(args);
@@ -604,7 +668,6 @@ export async function printKitchenTicket(args) {
       }
     }
 
-    // ✅ Browser mode: prints to Windows default printer
     const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
     return printViaBrowser(html);
   } catch (error) {

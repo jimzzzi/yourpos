@@ -174,6 +174,9 @@ export default function TakeawayScreen() {
         dining: "takeaway",
         table: null,
         billNumber,
+		customerName: payModalOrder.customer_name,
+        customerPhone: payModalOrder.customer_phone,
+        note: pay
       });
 
       // Open cash drawer if enabled

@@ -808,7 +808,18 @@ export default function POSHomeScreen() {
       const kpGroups = routeItemsForKitchen(normalizedItems, settings);
       for (const g of kpGroups) {
         try {
-          await printKitchenTicket({ type: "NEW", table: "TAKEAWAY #" + String(order.id).padStart(4, "0"), billNumber: order.id, dining: "takeaway", items: g.items, settings, printer: g.printer });
+            await printKitchenTicket({
+            type: "NEW",
+            table: "TAKEAWAY #" + String(order.id).padStart(4, "0"),
+            billNumber: order.id,
+            dining: "takeaway",
+            items: g.items,
+            settings,
+            printer: g.printer,
+            customerName: order.customer_name,
+            customerPhone: order.customer_phone,
+            note: order.note,
+          });
         } catch (e) { console.error("Kitchen print failed:", e); }
       }
       Alert.alert("✅", "Takeaway #" + String(order.id).padStart(4, "0") + " accepted! Kitchen ticket printed.");
