@@ -11,10 +11,20 @@ const orderLimiter = rateLimit({ windowMs: 60 * 1000, max: 100, message: { error
 // ========== PUBLIC: Takeaway menu ==========
 router.get("/menu", menuLimiter, async (req, res) => {
   try {
+        // 🔐 Support both token (secure) and store ID (backward compatible)
+    const takeawayToken = req.query.token;
     const storeId = parseInt(req.query.store);
-    if (!storeId || Number.isNaN(storeId)) return res.status(400).json({ error: "Invalid store code." });
 
-    const storeRes = await db.query("SELECT id, name, currency, tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
+    let storeRes;
+    if (takeawayToken) {
+      // New secure way: lookup by token
+      storeRes = await db.query("SELECT id, name, currency, tax_rate, tax_inclusive FROM stores WHERE takeaway_token = $1", [takeawayToken]);
+    } else if (storeId && !Number.isNaN(storeId)) {
+      // Old way: lookup by store ID (still works!)
+      storeRes = await db.query("SELECT id, name, currency, tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
+    } else {
+      return res.status(400).json({ error: "Invalid store code." });
+    } tax_rate, tax_inclusive FROM stores WHERE id = $1", [storeId]);
     if (storeRes.rows.length === 0) return res.status(404).json({ error: "Store not found." });
     const store = storeRes.rows[0];
 
