@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator
 const ACCENT = "#E8590C";
 const BACKEND_URL = "https://yourpos-backend.onrender.com"; // Replace with your actual backend URL
 
-export default function CustomerTakeawayScreen({ storeId }) {
+export default function CustomerTakeawayScreen({ token, storeId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [store, setStore] = useState(null);
@@ -33,7 +33,13 @@ export default function CustomerTakeawayScreen({ storeId }) {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`${BACKEND_URL}/api/takeaway/menu?store=${storeId}`);
+      
+      // Use token if available, otherwise fall back to store ID
+      const menuUrl = token 
+        ? `${BACKEND_URL}/api/takeaway/menu?token=${token}`
+        : `${BACKEND_URL}/api/takeaway/menu?store=${storeId}`;
+      
+      const res = await fetch(menuUrl);
       if (!res.ok) throw new Error("Failed to load menu");
       const data = await res.json();
       setStore(data.store || null);
@@ -128,7 +134,7 @@ export default function CustomerTakeawayScreen({ storeId }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          store_id: storeId,
+          store_id: store ? store.id : null, // Get store ID from loaded store object
           customer_name: customerName.trim() || "Guest",
           customer_phone: customerPhone.trim(),
           note: note.trim(),
@@ -141,15 +147,15 @@ export default function CustomerTakeawayScreen({ storeId }) {
       });
       
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(errData.error || "Failed to place order");
+        const errText = await res.text().catch(() => "No response body");
+        throw new Error("Status " + res.status + ": " + errText);
       }
       
       const data = await res.json();
       setOrderPlaced(data || { order_id: null });
       setOrderStatus("pending");
       setCart([]); setNote(""); setCustomerName(""); setCustomerPhone(""); setCartOpen(false);
-        } catch (e) {
+    } catch (e) {
       console.error("Place order error:", e);
       window.alert("ORDER ERROR: " + (e.message || "Unknown error. Check F12 console."));
     } finally {

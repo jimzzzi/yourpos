@@ -228,11 +228,11 @@ function RootNavigator() {
   }, []);
 
   // 🥡 Read Takeaway param - no login needed for customers
-  const takeawayStoreId = React.useMemo(() => {
+  const takeawayToken = React.useMemo(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const takeawayParam = params.get("takeaway");
-      if (takeawayParam) return parseInt(takeawayParam);
+      if (takeawayParam) return takeawayParam; // Return the token string as-is
     }
     return null;
   }, []);
@@ -244,9 +244,9 @@ function RootNavigator() {
     return <CustomerMenuScreen tableId={qrTableId} />;
   }
 
-  // 🥡 Takeaway menu is PUBLIC - customers don't need to login!
-  if (takeawayStoreId) {
-    return <CustomerTakeawayScreen storeId={takeawayStoreId} />;
+    // 🥡 Takeaway menu is PUBLIC - customers don't need to login!
+  if (takeawayToken) {
+    return <CustomerTakeawayScreen token={takeawayToken} />;
   }
   
   if (!user) return <AuthScreen />;
