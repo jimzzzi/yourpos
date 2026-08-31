@@ -13,7 +13,6 @@ import { printReceipt, printKitchenTicket, routeItemsForKitchen } from "../servi
 import { nextReceiptNumber } from "../services/receiptCounter";
 import VariantPickerModal from "../components/VariantPickerModal";
 import ModifierModal from "../components/ModifierModal";
-import BarcodeScannerModal from "../components/BarcodeScannerModal";
 import HardwareScannerInput from "../components/HardwareScannerInput";
 import { useRights } from "../auth/RightsContext";
 import { parseScaleBarcode, PREDEFINED_FORMATS } from "../services/barcodeParser";
@@ -160,7 +159,9 @@ export default function POSHomeScreen() {
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
   const [modifierPick, setModifierPick] = useState(null);
   const [scannerVisible, setScannerVisible] = useState(false);
-
+  const [scanMode, setScanMode] = useState(false);
+  const [lastScanned, setLastScanned] = useState("");
+  const [scanCount, setScanCount] = useState(0);
 
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [weightModalVariant, setWeightModalVariant] = useState(null);
@@ -700,6 +701,11 @@ export default function POSHomeScreen() {
   const handleBarcodeScanned = async (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
+
+    // 🔍 Scanner Mode: Track last scanned
+    setLastScanned(cleanCode);
+    setScanCount((prev) => prev + 1);
+
     const scaleSettings = settings.scale || {};
     if (scaleSettings.enabled) {
       let scaleFormat = null;
@@ -809,7 +815,7 @@ export default function POSHomeScreen() {
       const kpGroups = routeItemsForKitchen(normalizedItems, settings);
       for (const g of kpGroups) {
         try {
-            await printKitchenTicket({
+          await printKitchenTicket({
             type: "NEW",
             table: "TAKEAWAY #" + String(order.id).padStart(4, "0"),
             billNumber: order.id,
@@ -998,26 +1004,51 @@ export default function POSHomeScreen() {
     </TouchableOpacity>
   );
 
-  // 🔧 FIX: Count only pending takeaway orders for floating panel
   const pendingTakeawayCount = takeawayOrders.filter(o => o.status === "pending").length;
 
   return (
     <View style={styles.container}>
       <HardwareScannerInput
         onBarcode={handleBarcodeScanned}
-        active={!paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
+        active={scanMode && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
       />
 
       <View style={styles.productsPanel}>
         <View style={styles.searchContainer}>
           <TextInput style={styles.searchInput} placeholder={t("searchProducts")} placeholderTextColor={p.muted} value={search} onChangeText={setSearch} />
-          
+
+          {/* 🔍 Scanner Mode Toggle */}
+          <TouchableOpacity
+            style={[styles.scanButton, { backgroundColor: scanMode ? "#16A34A" : "#0F172A" }]}
+            onPress={() => { setScanMode(!scanMode); if (!scanMode) { setLastScanned(""); setScanCount(0); } }}
+          >
+            <Text style={styles.scanButtonText}>{scanMode ? "🔍 ON" : "🔍 OFF"}</Text>
+          </TouchableOpacity>
+
           {settings.tablesEnabled ? (
             <TouchableOpacity style={[styles.scanButton, styles.tablesButton]} onPress={() => { setTablesView(!tablesView); loadTables(); }}>
               <Text style={styles.scanButtonText}>🪑 {t("tables")}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {/* 🔍 Scanner Mode Status Bar */}
+        {scanMode ? (
+          <View style={{ backgroundColor: "#F0FDF4", borderBottomWidth: 1, borderBottomColor: "#86EFAC", paddingHorizontal: 15, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#16A34A" }} />
+            <Text style={{ fontSize: 13, fontWeight: "bold", color: "#16A34A" }}>Scanner Active</Text>
+            {lastScanned ? (
+              <>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>|</Text>
+                <Text style={{ fontSize: 12, color: "#334155", fontWeight: "600" }}>Last: {lastScanned}</Text>
+                <Text style={{ fontSize: 12, color: "#64748B" }}>|</Text>
+                <Text style={{ fontSize: 12, color: "#334155" }}>Scans: {scanCount}</Text>
+              </>
+            ) : (
+              <Text style={{ fontSize: 12, color: "#64748B" }}>Ready to scan...</Text>
+            )}
+          </View>
+        ) : null}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catBar} contentContainerStyle={{ alignItems: "center" }}>
           <TouchableOpacity style={[styles.catChip, selectedCategory == null && styles.catChipActive]} onPress={() => setSelectedCategory(null)}>
@@ -1196,13 +1227,11 @@ export default function POSHomeScreen() {
         </View>
       </View>
 
-      {/* 🔧 FIX: Only show panel when there are PENDING orders */}
       {(qrOrders.length + pendingTakeawayCount) > 0 && (
         <View style={styles.qrPanel}>
           <View style={styles.qrPanelHeader}>
             <Text style={styles.qrPanelTitle}>📲 Orders</Text>
             <View style={styles.qrPanelBadge}>
-              {/* 🔧 FIX: Badge shows only pending count */}
               <Text style={styles.qrPanelBadgeText}>{qrOrders.length + pendingTakeawayCount}</Text>
             </View>
           </View>
@@ -1225,17 +1254,14 @@ export default function POSHomeScreen() {
               </View>
             ))}
 
-            {/* 🥡 TAKEAWAY ORDERS SECTION - 🔧 FIX: Only show pending */}
             {pendingTakeawayCount > 0 ? (
               <View>
                 <View style={{ backgroundColor: "#F59E0B", padding: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ color: "#fff", fontSize: 14, fontWeight: "bold" }}>🥡 TAKEAWAY ORDERS</Text>
                   <View style={{ backgroundColor: "#fff", borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    {/* 🔧 FIX: Show only pending count */}
                     <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "bold" }}>{pendingTakeawayCount}</Text>
                   </View>
                 </View>
-                {/* 🔧 FIX: Map only pending orders */}
                 {takeawayOrders.filter(o => o.status === "pending").map((order) => {
                   const isPending = order.status === "pending";
                   return (
