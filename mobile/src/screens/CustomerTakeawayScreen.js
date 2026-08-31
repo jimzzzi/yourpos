@@ -134,7 +134,7 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          store_id: store ? store.id : null, // Get store ID from loaded store object
+          store_id: store ? store.id : null,
           customer_name: customerName.trim() || "Guest",
           customer_phone: customerPhone.trim(),
           note: note.trim(),
@@ -154,13 +154,25 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
       const data = await res.json();
       setOrderPlaced(data || { order_id: null });
       setOrderStatus("pending");
-      setCart([]); setNote(""); setCustomerName(""); setCustomerPhone(""); setCartOpen(false);
+      setCart([]);
+      setNote("");
+      setCartOpen(false);
     } catch (e) {
       console.error("Place order error:", e);
       window.alert("ORDER ERROR: " + (e.message || "Unknown error. Check F12 console."));
     } finally {
       setPlacing(false);
     }
+  };
+
+  // ===== "ORDER MORE" BUTTON - KEEPS CUSTOMER INFO =====
+  const handleOrderMore = () => {
+    setOrderPlaced(null);
+    setOrderStatus("pending");
+    setCart([]);
+    setNote("");
+    setCartOpen(false);
+    // ✅ Keep customerName and customerPhone pre-filled!
   };
 
   // ===== SUCCESS SCREEN =====
@@ -173,16 +185,41 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
           <Text style={s.successSub}>
             Order <Text style={{ fontWeight: "bold" }}>#{orderPlaced.order_number || ""}</Text> has been sent to the kitchen.
           </Text>
+          
+          {/* 🎯 LIVE ORDER STATUS TRACKER */}
+          <View style={s.statusTracker}>
+            <View style={[s.statusStep, orderStatus !== "pending" && s.statusStepActive]}>
+              <View style={[s.statusDot, orderStatus !== "pending" && s.statusDotActive]} />
+              <Text style={s.statusLabel}>Order Sent</Text>
+            </View>
+            <View style={s.statusLine} />
+            <View style={[s.statusStep, (orderStatus === "accepted" || orderStatus === "completed") && s.statusStepActive]}>
+              <View style={[s.statusDot, (orderStatus === "accepted" || orderStatus === "completed") && s.statusDotActive]} />
+              <Text style={s.statusLabel}>Preparing</Text>
+            </View>
+            <View style={s.statusLine} />
+            <View style={[s.statusStep, orderStatus === "completed" && s.statusStepActive]}>
+              <View style={[s.statusDot, orderStatus === "completed" && s.statusDotActive]} />
+              <Text style={s.statusLabel}>Ready</Text>
+            </View>
+          </View>
+
           <View style={s.successBadge}>
             <Text style={s.successBadgeText}>
-              {orderStatus === "pending" ? "🟡 Waiting for confirmation…" : orderStatus === "accepted" ? "👨‍🍳 Preparing your food…" : orderStatus === "completed" ? "✅ Completed — thank you!" : "📋 " + orderStatus}
+              {orderStatus === "pending" ? "🟡 Waiting for confirmation…" : 
+               orderStatus === "accepted" ? "👨‍🍳 Preparing your food…" : 
+               orderStatus === "completed" ? "✅ Ready for pickup!" : 
+               "📋 " + orderStatus}
             </Text>
           </View>
+          
           <Text style={{ fontSize: 13, color: "#64748B", textAlign: "center", marginBottom: 18 }}>
             💵 Please pay at the counter when you pick up your order.
           </Text>
-          <TouchableOpacity style={s.successBtn} onPress={() => setOrderPlaced(null)}>
-            <Text style={s.successBtnText}>Order More</Text>
+          
+          {/* 🛒 ORDER MORE BUTTON - Keeps customer info */}
+          <TouchableOpacity style={s.successBtn} onPress={handleOrderMore}>
+            <Text style={s.successBtnText}>🛒 Order More</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -463,9 +500,18 @@ const s = StyleSheet.create({
   successCard: { backgroundColor: "#fff", borderRadius: 24, padding: 30, alignItems: "center", width: "100%", maxWidth: 380, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 16, elevation: 5 },
   successIcon: { width: 90, height: 90, borderRadius: 45, backgroundColor: "#DCFCE7", justifyContent: "center", alignItems: "center", marginBottom: 18 },
   successTitle: { fontSize: 24, fontWeight: "bold", color: "#0F172A", marginBottom: 8 },
-  successSub: { fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 20, marginBottom: 18 },
+  successSub: { fontSize: 14, color: "#64748B", textAlign: "center", lineHeight: 20, marginBottom: 24 },
   successBadge: { backgroundColor: "#FEF3C7", borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8, marginBottom: 14 },
   successBadgeText: { color: "#B45309", fontWeight: "bold", fontSize: 13 },
   successBtn: { backgroundColor: ACCENT, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 14 },
   successBtnText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
+  
+  // 🎯 NEW: Order Status Tracker Styles
+  statusTracker: { flexDirection: "row", alignItems: "center", marginBottom: 24, width: "100%" },
+  statusStep: { alignItems: "center", flex: 1 },
+  statusDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#E2E8F0", borderWidth: 2, borderColor: "#CBD5E1" },
+  statusDotActive: { backgroundColor: ACCENT, borderColor: ACCENT },
+  statusLabel: { fontSize: 10, color: "#64748B", marginTop: 4, fontWeight: "600" },
+  statusStepActive: { opacity: 1 },
+  statusLine: { flex: 1, height: 2, backgroundColor: "#E2E8F0", marginTop: -12 },
 });
