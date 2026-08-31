@@ -1,61 +1,112 @@
-import React, { useRef, useState, useEffect } from "react";
-import { TextInput, StyleSheet, Platform } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { TextInput } from "react-native";
 
-export default function HardwareScannerInput({ onBarcode, active = true }) {
-  const inputRef = useRef(null);
+export default function HardwareScannerInput({ onBarcode, active }) {
   const [buffer, setBuffer] = useState("");
+  const inputRef = useRef(null);
+  const lastKeyTime = useRef(0);
+  const BUFFER_TIMEOUT = 50; // ms between keystrokes to detect scanner
 
+  // 🔍 Auto-focus when scanner mode is activated
   useEffect(() => {
-    if (Platform.OS === "web") return;
-
-    if (active) {
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 150);
-      return () => clearTimeout(timer);
+    if (active && inputRef.current) {
+      setTimeout(() => {
+        try {
+          inputRef.current.focus();
+        } catch (e) {
+          console.error("Focus error:", e);
+        }
+      }, 100);
     }
   }, [active]);
 
-  if (Platform.OS === "web") return null;
+  // 🔍 Handle each keystroke
+  const handleKeyPress = (event) => {
+    if (!active) return;
+
+    const now = Date.now();
+    const key = event.nativeEvent?.key || event.key || "";
+
+    // Enter key = end of barcode
+    if (key === "Enter") {
+      if (buffer.length >= 3) {
+        console.log("🔍 Barcode scanned:", buffer);
+        onBarcode(buffer);
+      }
+      // Clear buffer and re-focus for next scan
+      setBuffer("");
+      setTimeout(() => {
+        try {
+          if (inputRef.current) inputRef.current.focus();
+        } catch (e) {}
+      }, 50);
+      return;
+    }
+
+    // Only accept printable characters
+    if (key.length === 1) {
+      const timeDiff = now - lastKeyTime.current;
+      lastKeyTime.current = now;
+
+      // If too much time passed, reset buffer (human typing, not scanner)
+      if (timeDiff > BUFFER_TIMEOUT && buffer.length > 0) {
+        setBuffer(key);
+      } else {
+        setBuffer((prev) => prev + key);
+      }
+    }
+  };
+
+  // 🔍 Also handle onChange for some scanners that don't send Enter
+  const handleChange = (text) => {
+    if (!active) return;
+    
+    // Some scanners paste the entire barcode at once
+    if (text.length >= 6 && text !== buffer) {
+      console.log("🔍 Barcode detected via paste:", text);
+      onBarcode(text);
+      setBuffer("");
+      setTimeout(() => {
+        try {
+          if (inputRef.current) inputRef.current.focus();
+        } catch (e) {}
+      }, 50);
+      return;
+    }
+    setBuffer(text);
+  };
+
+  if (!active) return null;
 
   return (
     <TextInput
       ref={inputRef}
-      style={styles.hiddenInput}
       value={buffer}
-      onChangeText={setBuffer}
+      onChangeText={handleChange}
+      onKeyPress={handleKeyPress}
+      style={{
+        position: "absolute",
+        opacity: 0,
+        width: 1,
+        height: 1,
+        top: 0,
+        left: 0,
+        zIndex: -1,
+      }}
       autoFocus
       showSoftInputOnFocus={false}
+      keyboardType="default"
       autoCapitalize="none"
       autoCorrect={false}
-      blurOnSubmit={true}
-      returnKeyType="done"
-      onBlur={() => {
-        if (active) {
-          setTimeout(() => {
-            inputRef.current?.focus();
-          }, 200);
-        }
-      }}
+      blurOnSubmit={false}
       onSubmitEditing={() => {
-        const code = buffer.trim();
-        setBuffer("");
-        if (code) onBarcode(code);
+        // Re-focus after Enter
         setTimeout(() => {
-          inputRef.current?.focus();
-        }, 100);
+          try {
+            if (inputRef.current) inputRef.current.focus();
+          } catch (e) {}
+        }, 50);
       }}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  hiddenInput: {
-    position: "absolute",
-    width: 1,
-    height: 1,
-    opacity: 0,
-    top: 0,
-    left: 0,
-  },
-});
