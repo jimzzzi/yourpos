@@ -333,7 +333,7 @@ export function buildKitchenTicketHtml(args) {
   html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 15px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
   
   html += ".header { text-align: center; font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
-  html += ".table-box { text-align: center; font-size: 42px; font-weight: 900; padding: 10px 6px; border: 4px solid #000; margin: 8px 0; letter-spacing: 2px; }";
+  html += ".table-box { text-align: center; font-size: 26px; font-weight: 900; padding: 8px 6px; border: 3px solid #000; margin: 6px 0; letter-spacing: 1px; }";
   html += ".meta { text-align: center; font-size: 15px; margin: 4px 0; font-weight: bold; }";
   html += ".meta-row { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; padding: 0 4px; }";
   html += ".divider { border-top: 3px dashed #000; margin: 8px 0; }";
