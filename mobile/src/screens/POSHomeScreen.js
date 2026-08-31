@@ -159,6 +159,7 @@ export default function POSHomeScreen() {
   const [search, setSearch] = useState("");
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
   const [modifierPick, setModifierPick] = useState(null);
+  const [scannerVisible, setScannerVisible] = useState(false);
 
 
   const [weightModalProduct, setWeightModalProduct] = useState(null);
@@ -1004,7 +1005,7 @@ export default function POSHomeScreen() {
     <View style={styles.container}>
       <HardwareScannerInput
         onBarcode={handleBarcodeScanned}
-        active={!scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
+        active={!paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
       />
 
       <View style={styles.productsPanel}>
