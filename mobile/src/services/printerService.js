@@ -88,13 +88,10 @@ const AR_LABELS = {
 
 function getLbl(key, settings, defaultEn) {
   const lang = settings && settings.receiptLanguage;
-  if (lang === "ar" && AR_LABELS[key]) {
-    return AR_LABELS[key];
-  }
+  if (lang === "ar" && AR_LABELS[key]) return AR_LABELS[key];
   return defaultEn;
 }
 
-// 🥡 Build customer info lines for receipts
 function buildCustomerLines(args, width, isArabic) {
   const lines = [];
   const name = (args && args.customerName) || "";
@@ -127,16 +124,13 @@ function buildReceiptParts(args) {
   const billLine = a.billNumber ? getLbl("billNo", a.settings, "Bill No") + ": " + String(a.billNumber).padStart(6, "0") : null;
   const diningLine = a.dining ? (a.dining === "takeaway" ? getLbl("takeaway", a.settings, "TAKEAWAY") : getLbl("dineIn", a.settings, "DINE IN")) : null;
   const tableLine = a.table ? getLbl("table", a.settings, "TABLE") + ": " + a.table : null;
-
-  // 🥡 Customer info lines
   const customerLines = buildCustomerLines(a, width, isArabic);
 
   const itemsLines = [];
   (a.items || []).forEach((item) => {
     let itemDisplay = String(item.name || "Item");
-    if (item.time_elapsed_minutes) {
-      itemDisplay += " (" + item.time_elapsed_minutes + "min)";
-    }
+    if (item.sold_by_weight) itemDisplay += " ⚖️";
+    if (item.time_elapsed_minutes) itemDisplay += " (" + item.time_elapsed_minutes + "min)";
     itemsLines.push(itemDisplay.slice(0, width));
     if (item.description) itemsLines.push("  " + String(item.description).slice(0, Math.max(8, width - 2)));
     if (item.time_elapsed_minutes) {
@@ -145,14 +139,23 @@ function buildReceiptParts(args) {
     (item.modifiers || []).forEach((m) => {
       itemsLines.push(" + " + String(m.name || "").slice(0, Math.max(8, width - 4)));
     });
-    itemsLines.push(
-      formatLine(
-        (item.quantity || 0) + " x " + fmt(item.price, a.settings),
-        fmt((item.price || 0) * (item.quantity || 0), a.settings),
-        width,
-        isArabic
-      )
-    );
+
+    // ⚖️ Weight item: show KG × price/KG = total
+    if (item.sold_by_weight) {
+      const weightKg = Number(item.weight_kg || 0);
+      const pricePerKg = Number(item.unit_price_per_kg || item.price || 0);
+      const total = weightKg * pricePerKg;
+      itemsLines.push("  " + weightKg.toFixed(3) + " KG x " + fmt(pricePerKg, a.settings) + "/KG");
+      itemsLines.push(formatLine("", "= " + fmt(total, a.settings), width, isArabic));
+    } else {
+      itemsLines.push(
+        formatLine(
+          (item.quantity || 0) + " x " + fmt(item.price, a.settings),
+          fmt((item.price || 0) * (item.quantity || 0), a.settings),
+          width, isArabic
+        )
+      );
+    }
   });
   itemsLines.push(divider(width));
 
@@ -161,24 +164,13 @@ function buildReceiptParts(args) {
     totals.push(formatLine(getLbl("discount", a.settings, "Discount"), "-" + fmt(a.discount, a.settings), width, isArabic));
   }
   totals.push(formatLine(
-    vatInclusive
-      ? getLbl("subtotalExcl", a.settings, "Subtotal (excl. VAT)")
-      : getLbl("subtotal", a.settings, "Subtotal"),
-    fmt(a.subtotal, a.settings),
-    width,
-    isArabic
+    vatInclusive ? getLbl("subtotalExcl", a.settings, "Subtotal (excl. VAT)") : getLbl("subtotal", a.settings, "Subtotal"),
+    fmt(a.subtotal, a.settings), width, isArabic
   ));
   if (rs.showTax !== false) {
-    totals.push(formatLine(
-      getLbl("vat", a.settings, "VAT") + " " + rate + "%",
-      fmt(a.tax, a.settings),
-      width,
-      isArabic
-    ));
+    totals.push(formatLine(getLbl("vat", a.settings, "VAT") + " " + rate + "%", fmt(a.tax, a.settings), width, isArabic));
   }
-  const totalLabel = vatInclusive
-    ? getLbl("totalIncl", a.settings, "TOTAL (incl. VAT)")
-    : getLbl("total", a.settings, "TOTAL");
+  const totalLabel = vatInclusive ? getLbl("totalIncl", a.settings, "TOTAL (incl. VAT)") : getLbl("total", a.settings, "TOTAL");
   const totalValue = fmt(a.total, a.settings);
 
   const pays = [];
@@ -187,11 +179,7 @@ function buildReceiptParts(args) {
   if (payment) {
     (payment.payments || []).forEach((p) => {
       const method = String(p.method || "").toLowerCase();
-      const methodLabel = method === "cash"
-        ? getLbl("cash", a.settings, "CASH")
-        : method === "card"
-        ? getLbl("card", a.settings, "CARD")
-        : method.toUpperCase();
+      const methodLabel = method === "cash" ? getLbl("cash", a.settings, "CASH") : method === "card" ? getLbl("card", a.settings, "CARD") : method.toUpperCase();
       pays.push(formatLine(methodLabel, fmt(p.amount, a.settings), width, isArabic));
     });
     if (payment.payment_method === "cash") {
@@ -207,22 +195,17 @@ export function buildReceiptText(args) {
   const p = buildReceiptParts(args);
   const lines = [];
   const isArabic = args && args.settings && args.settings.receiptLanguage === "ar";
-
   if (args && args.duplicate) {
     lines.push(centerText(getLbl("copy", args.settings, "★ COPY / DUPLICATE BILL ★"), p.width));
     lines.push("");
   }
-
   p.headerLines.forEach((l) => lines.push(centerText(l, p.width)));
   lines.push(centerText(p.dateLine, p.width));
   if (p.printedLine) lines.push(centerText(p.printedLine, p.width));
   if (p.billLine) lines.push(centerText(p.billLine, p.width));
   if (p.diningLine) lines.push(centerText(p.diningLine, p.width));
   if (p.tableLine) lines.push(centerText(p.tableLine, p.width));
-  
-  // 🥡 Customer info
   p.customerLines.forEach((l) => lines.push(l));
-  
   lines.push(divider(p.width));
   p.itemsLines.forEach((l) => lines.push(l));
   p.totals.forEach((l) => lines.push(l));
@@ -242,7 +225,6 @@ export function buildReceiptHtml(args) {
   const padding = is58 ? "2mm 3mm" : "2mm 4mm";
   const logoHeader = p.rs.headerLogo ? '<img src="' + p.rs.headerLogo + '" class="logo" />' : "";
   const logoFooter = p.rs.footerLogo ? '<img src="' + p.rs.footerLogo + '" class="logo" />' : "";
-
   const lang = args && args.settings && args.settings.receiptLanguage;
   const isArabic = lang === "ar";
   const dirAttr = isArabic ? ' dir="rtl"' : '';
@@ -252,15 +234,13 @@ export function buildReceiptHtml(args) {
   if (args && args.duplicate) {
     headerHtml += '<div class="bigcenter" style="font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 2px dashed #000; padding-bottom: 4px;">' + escapeHtml(getLbl("copy", args.settings, "★ COPY / DUPLICATE BILL ★")) + "</div>";
   }
-
   p.headerLines.forEach((l) => { headerHtml += '<div class="c">' + escapeHtml(l) + "</div>"; });
   headerHtml += '<div class="c">' + escapeHtml(p.dateLine) + "</div>";
   if (p.printedLine) headerHtml += '<div class="c" style="font-size: 11px;">' + escapeHtml(p.printedLine) + "</div>";
   if (p.billLine) headerHtml += '<div class="bigcenter">' + escapeHtml(p.billLine) + "</div>";
   if (p.diningLine) headerHtml += '<div class="bigcenter">' + escapeHtml(p.diningLine) + "</div>";
   if (p.tableLine) headerHtml += '<div class="c">' + escapeHtml(p.tableLine) + "</div>";
-  
-  // 🥡 Customer info block (takeaway)
+
   const cName = (args && args.customerName) || "";
   const cPhone = (args && args.customerPhone) || "";
   const cNote = (args && args.note) || "";
@@ -272,7 +252,6 @@ export function buildReceiptHtml(args) {
     if (cNote) headerHtml += '<div class="c" style="font-size: 13px; font-style: italic;">' + escapeHtml(getLbl("note", args.settings, "Note")) + ": " + escapeHtml(cNote) + "</div>";
     headerHtml += "</div>";
   }
-  
   headerHtml += '<div class="c">' + escapeHtml(divider(p.width)) + "</div>";
 
   let footerHtml = "";
@@ -320,19 +299,14 @@ export function buildKitchenTicketHtml(args) {
   const dateStr = new Date().toLocaleDateString();
 
   let headerText = "*** NEW ORDER ***";
-  if (type === "ADDITION") {
-    headerText = "*** ADD ITEMS ***";
-  }
-  if (type === "VOID") {
-    headerText = "### VOID ITEM ###";
-  }
+  if (type === "ADDITION") headerText = "*** ADD ITEMS ***";
+  if (type === "VOID") headerText = "### VOID ITEM ###";
 
   let html = "<html><head><title>Kitchen</title><style>";
   html += "@page { size: " + paper + " auto; margin: 0; }";
   html += "html, body { margin: 0; padding: 0; }";
   html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 15px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
-  
-  html += ".header { text-align: center; font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
+  html += ".header { text-align: center; font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 0 0 6px 0; padding: 6px 0; border: 2px solid #000; color: #000; border-radius: 4px; }";
   html += ".table-box { text-align: center; font-size: 26px; font-weight: 900; padding: 8px 6px; border: 3px solid #000; margin: 6px 0; letter-spacing: 1px; }";
   html += ".meta { text-align: center; font-size: 15px; margin: 4px 0; font-weight: bold; }";
   html += ".meta-row { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; padding: 0 4px; }";
@@ -349,13 +323,10 @@ export function buildKitchenTicketHtml(args) {
   html += ".void-reason { text-align: center; font-size: 13px; font-weight: bold; margin: 4px 0; padding: 6px; border: 2px solid #000; }";
   html += ".footer { margin-top: 12px; text-align: center; font-size: 13px; font-weight: bold; border-top: 3px solid #000; padding-top: 8px; }";
   html += ".footer-time { font-size: 18px; font-weight: 900; margin-top: 4px; }";
-  
-  // 🥡 Customer info styling (BOLD and prominent for takeaway)
   html += ".customer-box { border: 3px solid #000; margin: 8px 0; padding: 8px; background: #fff; }";
   html += ".customer-title { text-align: center; font-size: 16px; font-weight: 900; margin-bottom: 6px; letter-spacing: 1px; }";
   html += ".customer-line { font-size: 15px; font-weight: bold; margin: 3px 0; }";
   html += ".customer-note { font-size: 14px; font-weight: bold; margin-top: 6px; padding: 6px; border: 2px dashed #000; font-style: italic; }";
-  
   html += "</style></head><body>";
 
   html += '<div class="header">' + escapeHtml(headerText) + "</div>";
@@ -372,15 +343,12 @@ export function buildKitchenTicketHtml(args) {
     if (voidedBy) html += '<div class="void-line">Voided by: ' + escapeHtml(voidedBy) + "</div>";
   } else {
     html += '<div class="table-box">' + escapeHtml(table) + "</div>";
-
     if (billNumber || a.dining) {
       html += '<div class="meta-row">';
       if (billNumber) html += '<span>Bill #' + escapeHtml(billNumber) + "</span>";
       if (a.dining) html += '<span>' + escapeHtml(a.dining === "takeaway" ? "🥡 TAKEAWAY" : "🍽 DINE-IN") + "</span>";
       html += "</div>";
     }
-
-    // 🥡 CUSTOMER INFO BOX - BIG AND BOLD for takeaway
     if (cName || cPhone || cNote) {
       html += '<div class="customer-box">';
       html += '<div class="customer-title">👤 CUSTOMER INFO</div>';
@@ -389,16 +357,24 @@ export function buildKitchenTicketHtml(args) {
       if (cNote) html += '<div class="customer-note">📝 ' + escapeHtml(cNote) + "</div>";
       html += "</div>";
     }
-
     html += '<div class="divider-thick"></div>';
 
     items.forEach((item) => {
       html += '<div class="item">';
       html += '<div class="item-row">';
-      html += '<span class="item-qty">' + (item.quantity || 1) + "x</span>";
-      html += '<span class="item-name">' + escapeHtml(item.name) + "</span>";
-      html += "</div>";
-      if (item.description) html += '<div class="item-desc">' + escapeHtml(item.description) + "</div>";
+      if (item.sold_by_weight) {
+        html += '<span class="item-qty">⚖️</span>';
+        html += '<span class="item-name">' + escapeHtml(item.name) + "</span>";
+        html += "</div>";
+        const weightKg = Number(item.weight_kg || 0);
+        const pricePerKg = Number(item.unit_price_per_kg || item.price || 0);
+        html += '<div class="item-desc" style="font-size:16px; font-weight:900;">' + weightKg.toFixed(3) + ' KG × ' + pricePerKg.toFixed(2) + '/KG</div>';
+      } else {
+        html += '<span class="item-qty">' + (item.quantity || 1) + "x</span>";
+        html += '<span class="item-name">' + escapeHtml(item.name) + "</span>";
+        html += "</div>";
+        if (item.description) html += '<div class="item-desc">' + escapeHtml(item.description) + "</div>";
+      }
       html += "</div>";
       (item.modifiers || []).forEach((m) => {
         html += '<div class="modifier">' + escapeHtml(m.name) + "</div>";
@@ -411,7 +387,6 @@ export function buildKitchenTicketHtml(args) {
   html += '<div>' + escapeHtml(dateStr) + "</div>";
   html += '<div class="footer-time">⏰ ' + escapeHtml(now) + "</div>";
   html += "</div>";
-
   html += "</body></html>";
   return html;
 }
@@ -429,22 +404,18 @@ export function buildKitchenTicketText(args) {
   const cPhone = a.customerPhone || "";
   const cNote = a.note || "";
   const width = 42;
-
   const thickLine = "=".repeat(width);
   const thinLine = "-".repeat(width);
-  const dashedLine = "- - - - - - - - - - - - - - - - - - - - -";
 
   let headerText = "*** NEW ORDER ***";
   if (type === "ADDITION") headerText = "*** ADD ITEMS ***";
   if (type === "VOID") headerText = "### VOID ITEM ###";
 
   let lines = [];
-
   lines.push(thickLine);
   lines.push(centerText(headerText, width));
   lines.push(thickLine);
   lines.push("");
-
   lines.push(thickLine);
   lines.push(centerText(table, width));
   lines.push(thickLine);
@@ -456,66 +427,49 @@ export function buildKitchenTicketText(args) {
     lines.push(thinLine);
     lines.push("1x  " + String(voidedItem.name || "").toUpperCase());
     if (voidedItem.modifiers && voidedItem.modifiers.length) {
-      voidedItem.modifiers.forEach((m) => {
-        lines.push("    * " + String(m.name || "").toUpperCase());
-      });
+      voidedItem.modifiers.forEach((m) => { lines.push("    * " + String(m.name || "").toUpperCase()); });
     }
     lines.push(thinLine);
-    if (voidReason) {
-      lines.push("");
-      lines.push("REASON: " + voidReason.toUpperCase());
-    }
-    if (voidedBy) {
-      lines.push("VOIDED BY: " + voidedBy.toUpperCase());
-    }
+    if (voidReason) { lines.push(""); lines.push("REASON: " + voidReason.toUpperCase()); }
+    if (voidedBy) lines.push("VOIDED BY: " + voidedBy.toUpperCase());
   } else {
     if (billNumber) lines.push(centerText("Bill #" + billNumber, width));
     if (a.dining) lines.push(centerText(a.dining === "takeaway" ? "🥡 TAKEAWAY" : "🍽 DINE-IN", width));
     lines.push("");
-
-    // 🥡 CUSTOMER INFO - BOLD AND PROMINENT
     if (cName || cPhone || cNote) {
       lines.push(thickLine);
       lines.push(centerText("👤 CUSTOMER INFO", width));
       lines.push(thickLine);
       if (cName) lines.push(" NAME: " + cName.toUpperCase());
       if (cPhone) lines.push(" PHONE: " + cPhone);
-      if (cNote) {
-        lines.push("");
-        lines.push(" 📝 NOTE:");
-        lines.push(" " + cNote.toUpperCase());
-      }
+      if (cNote) { lines.push(""); lines.push(" 📝 NOTE:"); lines.push(" " + cNote.toUpperCase()); }
       lines.push(thickLine);
       lines.push("");
     }
-
     lines.push(thinLine);
-
     items.forEach((item) => {
-      const qty = String(item.quantity || 1) + "x";
-      const name = String(item.name || "Item").toUpperCase();
-      lines.push(qty.padEnd(5) + name);
-      if (item.description) {
-        lines.push("     " + String(item.description).toUpperCase());
+      if (item.sold_by_weight) {
+        const weightKg = Number(item.weight_kg || 0);
+        const pricePerKg = Number(item.unit_price_per_kg || item.price || 0);
+        lines.push("⚖️  " + String(item.name || "Item").toUpperCase());
+        lines.push("     " + weightKg.toFixed(3) + " KG x " + pricePerKg.toFixed(2) + "/KG");
+      } else {
+        const qty = String(item.quantity || 1) + "x";
+        const name = String(item.name || "Item").toUpperCase();
+        lines.push(qty.padEnd(5) + name);
+        if (item.description) lines.push("     " + String(item.description).toUpperCase());
       }
-      (item.modifiers || []).forEach((m) => {
-        lines.push("     * " + String(m.name || "").toUpperCase());
-      });
-      if (item.notes) {
-        lines.push("     NOTE: " + String(item.notes).toUpperCase());
-      }
+      (item.modifiers || []).forEach((m) => { lines.push("     * " + String(m.name || "").toUpperCase()); });
+      if (item.notes) lines.push("     NOTE: " + String(item.notes).toUpperCase());
       lines.push(thinLine);
     });
   }
 
   lines.push("");
   const now = new Date();
-  const dateStr = now.toLocaleDateString();
-  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  lines.push(centerText(dateStr, width));
-  lines.push(centerText(timeStr, width));
+  lines.push(centerText(now.toLocaleDateString(), width));
+  lines.push(centerText(now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), width));
   lines.push(thickLine);
-
   return lines.join("\n");
 }
 
@@ -543,9 +497,7 @@ export function routeItemsForKitchen(items, settings) {
 }
 
 function printViaBrowser(html) {
-  if (typeof document === "undefined") {
-    return { success: false, error: "Printing not supported on this device." };
-  }
+  if (typeof document === "undefined") return { success: false, error: "Printing not supported on this device." };
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -554,43 +506,25 @@ function printViaBrowser(html) {
   iframe.style.height = "0";
   iframe.style.border = "0";
   document.body.appendChild(iframe);
-
   const doc = iframe.contentWindow.document;
   doc.open();
   doc.write(html);
   doc.close();
-
   setTimeout(() => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch (e) {
-      console.error("[PRINT] print failed:", e);
-    }
+    try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { console.error("[PRINT] print failed:", e); }
   }, 400);
-
-  setTimeout(() => {
-    try { document.body.removeChild(iframe); } catch (e) {}
-  }, 60000);
+  setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) {} }, 60000);
   return { success: true };
 }
 
 async function sendToNetworkPrinter(address, port, textBody) {
   const url = "http://" + address + ":" + (port || 9100);
   try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: textBody,
-    });
+    await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain" }, body: textBody });
     return;
   } catch (e) {
     try {
-      await fetch(url + "/print", {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: textBody,
-      });
+      await fetch(url + "/print", { method: "POST", headers: { "Content-Type": "text/plain" }, body: textBody });
       return;
     } catch (e2) {
       throw new Error("Cannot reach printer at " + address + ":" + (port || 9100));
@@ -600,10 +534,7 @@ async function sendToNetworkPrinter(address, port, textBody) {
 
 async function sendToCloudAgent(printerName, textContent) {
   try {
-    await api.post("/print/jobs", {
-      printer_name: printerName || "default",
-      content: textContent,
-    });
+    await api.post("/print/jobs", { printer_name: printerName || "default", content: textContent });
     return { success: true, method: "cloud" };
   } catch (error) {
     console.error("[CLOUD PRINT] Failed:", error);
@@ -618,11 +549,7 @@ export async function printReceipt(args) {
     const settings = (args && args.settings) || {};
     const printer = settings.printer || { enabled: false };
     const isTest = args && args.orderId === "TEST000123";
-
-    if (!printer.enabled && !isTest) {
-      return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
-    }
-
+    if (!printer.enabled && !isTest) return { success: false, error: "Printer is disabled. Enable it in Settings → Printer." };
     const html = buildReceiptHtml(args);
     return printViaBrowser(html);
   } catch (error) {
@@ -634,28 +561,16 @@ export async function printReceipt(args) {
 export async function printKitchenTicket(args) {
   try {
     const type = String(args.type || "NEW").toUpperCase();
-
-    if (type !== "NEW") {
-      return { success: true, skipped: true, reason: "Only NEW orders print to kitchen" };
-    }
-
+    if (type !== "NEW") return { success: true, skipped: true, reason: "Only NEW orders print to kitchen" };
     const settings = (args && args.settings) || {};
     let kp = args.printer || null;
-    if (!kp) {
-      const list = getKitchenPrinters(settings);
-      kp = list[0] || null;
-    }
-    if (!kp || kp.enabled === false) {
-      return { success: false, error: "Kitchen printer disabled." };
-    }
-
+    if (!kp) { const list = getKitchenPrinters(settings); kp = list[0] || null; }
+    if (!kp || kp.enabled === false) return { success: false, error: "Kitchen printer disabled." };
     const isArabic = settings.receiptLanguage === "ar";
-
     if (isArabic) {
       const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
       return printViaBrowser(html);
     }
-
     if (kp.connection === "network" && kp.address) {
       try {
         const text = buildKitchenTicketText(args);
@@ -667,7 +582,6 @@ export async function printKitchenTicket(args) {
         return printViaBrowser(html);
       }
     }
-
     const html = buildKitchenTicketHtml({ ...args, paperSize: kp.paperSize || "80" });
     return printViaBrowser(html);
   } catch (error) {
@@ -689,16 +603,12 @@ function buildDrawerHtml(pin) {
     "html, body { margin: 0; padding: 0; background: #fff; width: 80mm; height: 1mm; overflow: hidden; }" +
     "body { font-family: 'Courier New', monospace; }" +
     "pre { color: #fff; background: #fff; font-size: 1px; line-height: 1px; height: 0; overflow: hidden; margin: 0; padding: 0; }" +
-    "</style></head><body>" +
-    "<pre>" + cmd + "</pre>" +
-    "</body></html>"
+    "</style></head><body><pre>" + cmd + "</pre></body></html>"
   );
 }
 
 function silentDrawerPrint(html) {
-  if (typeof document === "undefined") {
-    return { success: false, error: "Printing not supported." };
-  }
+  if (typeof document === "undefined") return { success: false, error: "Printing not supported." };
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -707,25 +617,12 @@ function silentDrawerPrint(html) {
   iframe.style.height = "0";
   iframe.style.border = "0";
   document.body.appendChild(iframe);
-
   const doc = iframe.contentWindow.document;
   doc.open();
   doc.write(html);
   doc.close();
-
-  setTimeout(() => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch (e) {
-      console.error("[DRAWER] silent print failed:", e);
-    }
-  }, 200);
-
-  setTimeout(() => {
-    try { document.body.removeChild(iframe); } catch (e) {}
-  }, 3000);
-
+  setTimeout(() => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) {} }, 200);
+  setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) {} }, 3000);
   return { success: true };
 }
 
@@ -733,11 +630,7 @@ export async function openCashDrawer(settings) {
   try {
     const s = settings || {};
     const cd = s.cashDrawer || {};
-
-    if (cd.enabled === false) {
-      return { success: false, error: "Cash drawer is disabled." };
-    }
-
+    if (cd.enabled === false) return { success: false, error: "Cash drawer is disabled." };
     const pin = cd.pin || 2;
     const html = buildDrawerHtml(pin);
     return silentDrawerPrint(html);
@@ -773,9 +666,7 @@ function qrPageHtml(storeName, tableName, qrUrl) {
 }
 
 function printViaBrowserWaitImages(html) {
-  if (typeof document === "undefined") {
-    return { success: false, error: "Printing not supported on this device." };
-  }
+  if (typeof document === "undefined") return { success: false, error: "Printing not supported on this device." };
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -784,35 +675,20 @@ function printViaBrowserWaitImages(html) {
   iframe.style.height = "0";
   iframe.style.border = "0";
   document.body.appendChild(iframe);
-
   const doc = iframe.contentWindow.document;
   doc.open();
   doc.write(html);
   doc.close();
-
-  const doPrint = () => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch (e) {}
-  };
-
+  const doPrint = () => { try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) {} };
   const imgs = doc.images ? Array.from(doc.images) : [];
-  if (imgs.length === 0) {
-    setTimeout(doPrint, 400);
-  } else {
+  if (imgs.length === 0) { setTimeout(doPrint, 400); }
+  else {
     let loaded = 0;
     const tick = () => { loaded++; if (loaded >= imgs.length) setTimeout(doPrint, 200); };
-    imgs.forEach((img) => {
-      if (img.complete) tick();
-      else { img.onload = tick; img.onerror = tick; }
-    });
+    imgs.forEach((img) => { if (img.complete) tick(); else { img.onload = tick; img.onerror = tick; } });
     setTimeout(doPrint, 3000);
   }
-
-  setTimeout(() => {
-    try { document.body.removeChild(iframe); } catch (e) {}
-  }, 60000);
+  setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) {} }, 60000);
   return { success: true };
 }
 

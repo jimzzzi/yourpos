@@ -159,7 +159,7 @@ export default function POSHomeScreen() {
   const [search, setSearch] = useState("");
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
   const [modifierPick, setModifierPick] = useState(null);
-  const [scannerVisible, setScannerVisible] = useState(false);
+
 
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [weightModalVariant, setWeightModalVariant] = useState(null);
@@ -1010,11 +1010,7 @@ export default function POSHomeScreen() {
       <View style={styles.productsPanel}>
         <View style={styles.searchContainer}>
           <TextInput style={styles.searchInput} placeholder={t("searchProducts")} placeholderTextColor={p.muted} value={search} onChangeText={setSearch} />
-          {settings.tablesEnabled ? null : (
-            <TouchableOpacity style={styles.scanButton} onPress={() => setScannerVisible(true)}>
-              <Text style={styles.scanButtonText}>📷 {t("scan")}</Text>
-            </TouchableOpacity>
-          )}
+          
           {settings.tablesEnabled ? (
             <TouchableOpacity style={[styles.scanButton, styles.tablesButton]} onPress={() => { setTablesView(!tablesView); loadTables(); }}>
               <Text style={styles.scanButtonText}>🪑 {t("tables")}</Text>
@@ -1294,8 +1290,6 @@ export default function POSHomeScreen() {
         onClose={() => setModifierPick(null)}
         onConfirm={(selected) => { if (modifierPick) addToCart(modifierPick.product, modifierPick.variant, selected); setModifierPick(null); }}
       />
-
-      <BarcodeScannerModal visible={scannerVisible} onClose={() => setScannerVisible(false)} onScanned={handleBarcodeScanned} />
 
       <Modal visible={Boolean(weightModalProduct)} transparent animationType="fade" onRequestClose={() => { setWeightModalProduct(null); setWeightInput(""); }}>
         <View style={styles.paymentOverlay}>
