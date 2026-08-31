@@ -289,7 +289,7 @@ export function buildReceiptHtml(args) {
     "pre { margin: 0; font-family: inherit; font-size: inherit; font-weight: inherit; white-space: pre-wrap; }" +
     ".c { text-align: center; font-size: 12px; }" +
     ".bigcenter { text-align: center; font-size: 16px; font-weight: bold; margin: 3px 0; }" +
-    ".logo { max-width: 90%; max-height: 24mm; display: block; margin: 0 auto 4px; }" +
+    ".logo { max-width: 90%; max-height: 40mm; display: block; margin: 0 auto 6px; }" +
     ".bigrow { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; margin: 4px 0; }" +
     "</style></head><body" + dirAttr + ">" +
     logoHeader + headerHtml +
@@ -332,7 +332,7 @@ export function buildKitchenTicketHtml(args) {
   html += "html, body { margin: 0; padding: 0; }";
   html += "body { box-sizing: border-box; width: " + paper + "; padding: " + padding + "; font-family: 'Courier New', monospace; font-size: 15px; font-weight: bold; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }";
   
-  html += ".header { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 3px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
+  html += ".header { text-align: center; font-size: 18px; font-weight: 900; letter-spacing: 2px; margin: 0 0 8px 0; padding: 8px 0; border: 3px solid #000; color: #000; border-radius: 4px; }";
   html += ".table-box { text-align: center; font-size: 42px; font-weight: 900; padding: 10px 6px; border: 4px solid #000; margin: 8px 0; letter-spacing: 2px; }";
   html += ".meta { text-align: center; font-size: 15px; margin: 4px 0; font-weight: bold; }";
   html += ".meta-row { display: flex; justify-content: space-between; font-size: 14px; margin: 3px 0; padding: 0 4px; }";
