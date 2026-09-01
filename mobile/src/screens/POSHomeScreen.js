@@ -248,7 +248,7 @@ export default function POSHomeScreen() {
   };
 
   // 🔥 Toggle scan mode
-  const toggleScanMode = () => {
+    const toggleScanMode = () => {
     setScanMode(!scanMode);
     setScanModeInput("");
     setScanCount(0);
@@ -259,6 +259,15 @@ export default function POSHomeScreen() {
       }, 200);
     }
   };
+
+  // 🔥 Re-focus scan input when weight modal closes (so next scan works)
+  useEffect(() => {
+    if (!weightModalProduct && scanMode && scanInputRef.current) {
+      setTimeout(() => {
+        if (scanInputRef.current) scanInputRef.current.focus();
+      }, 300);
+    }
+  }, [weightModalProduct, scanMode]);
 
   const taxRate = Number(store?.tax_rate || 0) / 100;
   const vatInclusive = Boolean(store && store.tax_inclusive);
@@ -733,9 +742,12 @@ export default function POSHomeScreen() {
     }
   };
 
-  const handleBarcodeScanned = async (code) => {
+    const handleBarcodeScanned = async (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
+
+    // 🔥 Track if scale barcode was successfully handled
+    let scaleHandled = false;
 
     const scaleSettings = settings.scale || {};
     if (scaleSettings.enabled) {
@@ -762,7 +774,7 @@ export default function POSHomeScreen() {
                   if (existing) return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
                   return [...prevCart, { id: lineId, variant_id: variant.id, product_id: product.product_id || product.id, category_id: product.category_id, name: product.name, description: product.description, price: pricePerKg, quantity: 1, sold_by_weight: true, weight_kg: weightKg, unit_price_per_kg: pricePerKg, modifiers: [], is_time_based: false }];
                 });
-                return;
+                scaleHandled = true;
               } else if (scaleResult.price !== null && scaleResult.price > 0) {
                 const lineId = "SP_" + String(variant.id) + "_" + scaleResult.price.toFixed(2);
                 setCart((prevCart) => {
@@ -770,15 +782,18 @@ export default function POSHomeScreen() {
                   if (existing) return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
                   return [...prevCart, { id: lineId, variant_id: variant.id, product_id: product.product_id || product.id, category_id: product.category_id, name: product.name, description: product.description, price: scaleResult.price, quantity: 1, sold_by_weight: false, modifiers: [], is_time_based: false }];
                 });
-                return;
+                scaleHandled = true;
               }
             }
           }
-          Alert.alert("Scale Item Not Found", "Item #" + scaleResult.itemId + " not found in your products. Make sure the product SKU matches the scale item number.");
-          return;
+          // 🔥 If scale format matched but product NOT found, DON'T return — fall through to regular barcode lookup
         }
       }
     }
+
+    // 🔥 If scale successfully handled, we're done
+    if (scaleHandled) return;
+
     for (const product of products) {
       const variant = (product.variants || []).find((v) => v.barcode === code || v.sku === code);
       if (variant) {
