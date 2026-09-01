@@ -159,9 +159,13 @@ export default function POSHomeScreen() {
   const [variantPickerProduct, setVariantPickerProduct] = useState(null);
   const [modifierPick, setModifierPick] = useState(null);
   const [scannerVisible, setScannerVisible] = useState(false);
+
+  // 🔥 SCAN MODE STATES
   const [scanMode, setScanMode] = useState(false);
-  const [lastScanned, setLastScanned] = useState("");
+  const [scanModeInput, setScanModeInput] = useState("");
   const [scanCount, setScanCount] = useState(0);
+  const [lastScanned, setLastScanned] = useState(null);
+  const scanInputRef = useRef(null);
 
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [weightModalVariant, setWeightModalVariant] = useState(null);
@@ -222,6 +226,37 @@ export default function POSHomeScreen() {
       console.log("🔔 Order sound played!");
     } catch (e) {
       console.error("Sound error:", e);
+    }
+  };
+
+  // 🔥 SCAN MODE: Beep sound
+  const playScanBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.type = "square";
+      oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
+      gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {}
+  };
+
+  // 🔥 Toggle scan mode
+  const toggleScanMode = () => {
+    setScanMode(!scanMode);
+    setScanModeInput("");
+    setScanCount(0);
+    setLastScanned(null);
+    if (!scanMode) {
+      setTimeout(() => {
+        if (scanInputRef.current) scanInputRef.current.focus();
+      }, 200);
     }
   };
 
@@ -702,10 +737,6 @@ export default function POSHomeScreen() {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
 
-    // 🔍 Scanner Mode: Track last scanned
-    setLastScanned(cleanCode);
-    setScanCount((prev) => prev + 1);
-
     const scaleSettings = settings.scale || {};
     if (scaleSettings.enabled) {
       let scaleFormat = null;
@@ -743,7 +774,7 @@ export default function POSHomeScreen() {
               }
             }
           }
-          Alert.alert("Scale Item Not Found", "Item #" + scaleResult.itemId + " not found in your products.");
+          Alert.alert("Scale Item Not Found", "Item #" + scaleResult.itemId + " not found in your products. Make sure the product SKU matches the scale item number.");
           return;
         }
       }
@@ -763,6 +794,22 @@ export default function POSHomeScreen() {
     } catch (error) {
       Alert.alert("Not Found", "No product found for barcode: " + cleanCode);
     }
+  };
+
+  // 🔥 SCAN MODE: Process barcode and auto-refocus
+  const handleScanModeInput = (code) => {
+    const cleanCode = String(code || "").trim();
+    if (!cleanCode) return;
+
+    handleBarcodeScanned(cleanCode);
+    setScanCount((prev) => prev + 1);
+    setLastScanned({ code: cleanCode, time: Date.now() });
+    setScanModeInput("");
+    playScanBeep();
+
+    setTimeout(() => {
+      if (scanInputRef.current) scanInputRef.current.focus();
+    }, 100);
   };
 
   const openPaymentModal = () => {
@@ -1008,23 +1055,85 @@ export default function POSHomeScreen() {
 
   return (
     <View style={styles.container}>
+      {/* 🔥 HardwareScannerInput — active ONLY when NOT in scan mode */}
       <HardwareScannerInput
-        onBarcode={handleBarcodeScanned}
-        active={scanMode && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
+        onBarcode={(code) => {
+          if (scanMode) {
+            handleScanModeInput(code);
+          } else {
+            handleBarcodeScanned(code);
+          }
+        }}
+        active={!scanMode && !scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
       />
 
       <View style={styles.productsPanel}>
         <View style={styles.searchContainer}>
-          <TextInput style={styles.searchInput} placeholder={t("searchProducts")} placeholderTextColor={p.muted} value={search} onChangeText={setSearch} />
-
-          {/* 🔍 Scanner Mode Toggle */}
+          {/* 🔥 Scan Mode Toggle Button */}
           <TouchableOpacity
-            style={[styles.scanButton, { backgroundColor: scanMode ? "#16A34A" : "#0F172A" }]}
-            onPress={() => { setScanMode(!scanMode); if (!scanMode) { setLastScanned(""); setScanCount(0); } }}
+            style={{
+              backgroundColor: scanMode ? "#DC2626" : "#0F172A",
+              borderRadius: 8,
+              paddingHorizontal: 14,
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: scanMode ? "#DC2626" : p.border,
+              marginRight: 8,
+            }}
+            onPress={toggleScanMode}
           >
-            <Text style={styles.scanButtonText}>{scanMode ? "🔍 ON" : "🔍 OFF"}</Text>
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>
+              {scanMode ? "🔴 STOP" : "📷 SCAN"}
+            </Text>
           </TouchableOpacity>
 
+          {/* 🔥 Search or Scan Input based on scan mode */}
+          {scanMode ? (
+            <TextInput
+              ref={scanInputRef}
+              style={{
+                flex: 1,
+                backgroundColor: "#FEF2F2",
+                borderRadius: 8,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 18,
+                color: "#DC2626",
+                borderWidth: 2,
+                borderColor: "#DC2626",
+                fontWeight: "bold",
+              }}
+              placeholder="🔴 SCAN MODE — Waiting for barcode..."
+              placeholderTextColor="#FCA5A5"
+              value={scanModeInput}
+              onChangeText={setScanModeInput}
+              onSubmitEditing={() => handleScanModeInput(scanModeInput)}
+              returnKeyType="done"
+              autoFocus
+            />
+          ) : (
+            <TextInput
+              style={styles.searchInput}
+              placeholder={t("searchProducts") + " / Paste barcode + Enter"}
+              placeholderTextColor={p.muted}
+              value={search}
+              onChangeText={setSearch}
+              onSubmitEditing={() => {
+                const trimmed = search.trim();
+                if (/^\d{8,18}$/.test(trimmed)) {
+                  handleBarcodeScanned(trimmed);
+                  setSearch("");
+                }
+              }}
+              returnKeyType="search"
+            />
+          )}
+
+          {settings.tablesEnabled ? null : (
+            <TouchableOpacity style={styles.scanButton} onPress={() => setScannerVisible(true)}>
+              <Text style={styles.scanButtonText}>📷 {t("scan")}</Text>
+            </TouchableOpacity>
+          )}
           {settings.tablesEnabled ? (
             <TouchableOpacity style={[styles.scanButton, styles.tablesButton]} onPress={() => { setTablesView(!tablesView); loadTables(); }}>
               <Text style={styles.scanButtonText}>🪑 {t("tables")}</Text>
@@ -1032,21 +1141,24 @@ export default function POSHomeScreen() {
           ) : null}
         </View>
 
-        {/* 🔍 Scanner Mode Status Bar */}
+        {/* 🔥 Scan Mode Status Bar */}
         {scanMode ? (
-          <View style={{ backgroundColor: "#F0FDF4", borderBottomWidth: 1, borderBottomColor: "#86EFAC", paddingHorizontal: 15, paddingVertical: 8, flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#16A34A" }} />
-            <Text style={{ fontSize: 13, fontWeight: "bold", color: "#16A34A" }}>Scanner Active</Text>
+          <View style={{
+            backgroundColor: "#DC2626",
+            paddingVertical: 8,
+            paddingHorizontal: 15,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}>
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>
+              🔴 SCAN MODE — {scanCount} item{scanCount !== 1 ? "s" : ""} scanned
+            </Text>
             {lastScanned ? (
-              <>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>|</Text>
-                <Text style={{ fontSize: 12, color: "#334155", fontWeight: "600" }}>Last: {lastScanned}</Text>
-                <Text style={{ fontSize: 12, color: "#64748B" }}>|</Text>
-                <Text style={{ fontSize: 12, color: "#334155" }}>Scans: {scanCount}</Text>
-              </>
-            ) : (
-              <Text style={{ fontSize: 12, color: "#64748B" }}>Ready to scan...</Text>
-            )}
+              <Text style={{ color: "#FCA5A5", fontSize: 12 }}>
+                Last: {lastScanned.code}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
