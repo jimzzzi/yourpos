@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator, Image } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator, Image, useWindowDimensions } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import { useI18n } from "../i18n/I18nContext";
@@ -23,8 +23,8 @@ function makeStyles(p, cols) {
     container: { flex: 1, flexDirection: "row", backgroundColor: p.bg },
     productsPanel: { flex: 2.5, borderRightWidth: 1, borderColor: p.border, backgroundColor: p.bg },
     cartPanel: { flex: 1, backgroundColor: p.surface },
-    searchContainer: { flexDirection: "row", padding: 15, gap: 12, borderBottomWidth: 1, borderBottomColor: p.border, backgroundColor: p.surface },
-    searchInput: { flex: 1, backgroundColor: p.input, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: p.text, borderWidth: 1, borderColor: p.border },
+    searchContainer: { flexDirection: "row", padding: 15, gap: 12, borderBottomWidth: 1, borderBottomColor: p.border, backgroundColor: p.surface, flexWrap: "wrap" },
+    searchInput: { flex: 1, backgroundColor: p.input, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: p.text, borderWidth: 1, borderColor: p.border, minWidth: 150 },
     scanButton: { backgroundColor: "#0F172A", borderRadius: 8, paddingHorizontal: 20, justifyContent: "center", borderWidth: 1, borderColor: p.border },
     scanButtonText: { color: "#fff", fontWeight: "bold" },
     tablesButton: { paddingHorizontal: 28, paddingVertical: 12 },
@@ -142,8 +142,13 @@ export default function POSHomeScreen() {
   const { t } = useI18n();
   const { can } = useRights();
   const p = getPalette(settings.darkMode);
+
+  // 📱 Mobile Responsive Detection
+  const { width: screenWidth } = useWindowDimensions();
+  const isMobile = screenWidth < 768;
+
   const cols = Math.min(8, Math.max(1, Number(settings.gridColumns || 3)));
-  const styles = makeStyles(p, cols);
+  const styles = makeStyles(p, isMobile ? 2 : cols);
 
   const dec = Number.isInteger(Number(settings.decimals)) ? Number(settings.decimals) : 2;
   const sym = settings.currencySymbol || "$";
@@ -166,6 +171,9 @@ export default function POSHomeScreen() {
   const [scanCount, setScanCount] = useState(0);
   const [lastScanned, setLastScanned] = useState(null);
   const scanInputRef = useRef(null);
+
+  // 📱 Mobile Cart Modal
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   const [weightModalProduct, setWeightModalProduct] = useState(null);
   const [weightModalVariant, setWeightModalVariant] = useState(null);
@@ -248,7 +256,7 @@ export default function POSHomeScreen() {
   };
 
   // 🔥 Toggle scan mode
-    const toggleScanMode = () => {
+  const toggleScanMode = () => {
     setScanMode(!scanMode);
     setScanModeInput("");
     setScanCount(0);
@@ -260,7 +268,7 @@ export default function POSHomeScreen() {
     }
   };
 
-  // 🔥 Re-focus scan input when weight modal closes (so next scan works)
+  // 🔥 Re-focus scan input when weight modal closes
   useEffect(() => {
     if (!weightModalProduct && scanMode && scanInputRef.current) {
       setTimeout(() => {
@@ -742,11 +750,10 @@ export default function POSHomeScreen() {
     }
   };
 
-    const handleBarcodeScanned = async (code) => {
+  const handleBarcodeScanned = async (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
 
-    // 🔥 Track if scale barcode was successfully handled
     let scaleHandled = false;
 
     const scaleSettings = settings.scale || {};
@@ -786,12 +793,10 @@ export default function POSHomeScreen() {
               }
             }
           }
-          // 🔥 If scale format matched but product NOT found, DON'T return — fall through to regular barcode lookup
         }
       }
     }
 
-    // 🔥 If scale successfully handled, we're done
     if (scaleHandled) return;
 
     for (const product of products) {
@@ -815,13 +820,11 @@ export default function POSHomeScreen() {
   const handleScanModeInput = (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
-
     handleBarcodeScanned(cleanCode);
     setScanCount((prev) => prev + 1);
     setLastScanned({ code: cleanCode, time: Date.now() });
     setScanModeInput("");
     playScanBeep();
-
     setTimeout(() => {
       if (scanInputRef.current) scanInputRef.current.focus();
     }, 100);
@@ -1067,10 +1070,10 @@ export default function POSHomeScreen() {
   );
 
   const pendingTakeawayCount = takeawayOrders.filter(o => o.status === "pending").length;
+  const cartItemCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <View style={styles.container}>
-      {/* 🔥 HardwareScannerInput — active ONLY when NOT in scan mode */}
+    <View style={isMobile ? { flex: 1, backgroundColor: p.bg } : styles.container}>
       <HardwareScannerInput
         onBarcode={(code) => {
           if (scanMode) {
@@ -1079,10 +1082,10 @@ export default function POSHomeScreen() {
             handleBarcodeScanned(code);
           }
         }}
-        active={!scanMode && !scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct}
+        active={!scanMode && !scannerVisible && !paymentModalVisible && !variantPickerProduct && !modifierPick && !completedSale && !cashModal && !discountModalVisible && !voidReasonModal && !preprintTable && !weightModalProduct && !mobileCartOpen}
       />
 
-      <View style={styles.productsPanel}>
+      <View style={isMobile ? { flex: 1 } : styles.productsPanel}>
         <View style={styles.searchContainer}>
           {/* 🔥 Scan Mode Toggle Button */}
           <TouchableOpacity
@@ -1117,6 +1120,7 @@ export default function POSHomeScreen() {
                 borderWidth: 2,
                 borderColor: "#DC2626",
                 fontWeight: "bold",
+                minWidth: 150,
               }}
               placeholder="🔴 SCAN MODE — Waiting for barcode..."
               placeholderTextColor="#FCA5A5"
@@ -1241,6 +1245,8 @@ export default function POSHomeScreen() {
         )}
       </View>
 
+      {/* 📱 Hide desktop cart panel on mobile */}
+      {!isMobile && (
       <View style={styles.cartPanel}>
         <View style={styles.cartHeader}>
           <View style={styles.cartHeaderLeft}>
@@ -1353,6 +1359,7 @@ export default function POSHomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
       {(qrOrders.length + pendingTakeawayCount) > 0 && (
         <View style={styles.qrPanel}>
@@ -1445,6 +1452,7 @@ export default function POSHomeScreen() {
         onConfirm={(selected) => { if (modifierPick) addToCart(modifierPick.product, modifierPick.variant, selected); setModifierPick(null); }}
       />
 
+      {/* Weight Modal */}
       <Modal visible={Boolean(weightModalProduct)} transparent animationType="fade" onRequestClose={() => { setWeightModalProduct(null); setWeightInput(""); }}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1491,6 +1499,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
+      {/* Pre-print Modal */}
       <Modal visible={Boolean(preprintTable)} transparent animationType="fade" onRequestClose={() => setPreprintTable(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1524,6 +1533,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
+      {/* Payment Modal */}
       <Modal visible={paymentModalVisible} transparent animationType="fade" onRequestClose={closePaymentClearTakeaway}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1576,6 +1586,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
+      {/* Discount Modal */}
       <Modal visible={discountModalVisible} transparent animationType="fade" onRequestClose={() => setDiscountModalVisible(false)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1601,6 +1612,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
+      {/* Sale Completed Modal */}
       <Modal visible={Boolean(completedSale)} transparent animationType="fade">
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1618,6 +1630,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
+      {/* Cash In/Out Modal */}
       <Modal visible={Boolean(cashModal)} transparent animationType="fade" onRequestClose={() => setCashModal(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1638,6 +1651,7 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
+      {/* Void Reason Modal */}
       <Modal visible={Boolean(voidReasonModal)} transparent animationType="fade" onRequestClose={() => setVoidReasonModal(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1655,6 +1669,142 @@ export default function POSHomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* 📱 MOBILE: Floating Cart Bar */}
+      {isMobile && cart.length > 0 && !mobileCartOpen && !paymentModalVisible && (
+        <TouchableOpacity
+          style={{
+            position: "absolute",
+            bottom: 20,
+            left: 20,
+            right: 20,
+            backgroundColor: p.accent,
+            borderRadius: 16,
+            paddingVertical: 16,
+            paddingHorizontal: 20,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            shadowColor: "#000",
+            shadowOpacity: 0.3,
+            shadowRadius: 10,
+            elevation: 10,
+            zIndex: 100,
+          }}
+          onPress={() => setMobileCartOpen(true)}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ backgroundColor: "#fff", borderRadius: 12, minWidth: 28, height: 28, justifyContent: "center", alignItems: "center", paddingHorizontal: 8 }}>
+              <Text style={{ color: p.accent, fontWeight: "bold", fontSize: 14 }}>{cartItemCount}</Text>
+            </View>
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>{t("currentTicket")}</Text>
+          </View>
+          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 18 }}>{fm(total)}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 📱 MOBILE: Cart Modal */}
+      {isMobile && (
+        <Modal visible={mobileCartOpen} transparent animationType="slide" onRequestClose={() => setMobileCartOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+            <View style={{ backgroundColor: p.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "85%", padding: 20 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <Text style={{ fontSize: 20, fontWeight: "bold", color: p.text }}>{t("currentTicket")} ({cart.length})</Text>
+                <TouchableOpacity onPress={() => setMobileCartOpen(false)}>
+                  <Text style={{ fontSize: 24, color: p.muted }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ flex: 1, marginBottom: 16 }}>
+                {cart.length === 0 ? (
+                  <View style={{ alignItems: "center", paddingVertical: 30 }}>
+                    <Text style={{ fontSize: 40, marginBottom: 10 }}>🛒</Text>
+                    <Text style={{ color: p.muted, fontSize: 16 }}>{t("cartEmpty")}</Text>
+                  </View>
+                ) : (
+                  displayCart.map((item) => (
+                    <View key={item.id} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: p.border }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: "600", color: p.text }} numberOfLines={2}>
+                          {item.name}{item.sold_by_weight ? " ⚖️" : ""}
+                        </Text>
+                        {item.modifiers && item.modifiers.length > 0 ? (
+                          <Text style={{ fontSize: 12, color: p.accent, marginTop: 2 }}>{item.modifiers.map((m) => "+ " + m.name).join(", ")}</Text>
+                        ) : null}
+                        <Text style={{ fontSize: 13, color: p.muted, marginTop: 2 }}>
+                          {item.sold_by_weight
+                            ? `${Number(item.weight_kg || 0).toFixed(3)} KG × ${fm(item.unit_price_per_kg)}/KG = ${fm(Number(item.weight_kg || 0) * Number(item.unit_price_per_kg || 0))}`
+                            : `${item.quantity} × ${fm(item.price)} = ${fm(item.price * item.quantity)}`
+                          }
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        {item.sold_by_weight ? (
+                          <Text style={{ color: p.accent, fontWeight: "bold", fontSize: 13 }}>{Number(item.weight_kg || 0).toFixed(3)}kg</Text>
+                        ) : (
+                          <>
+                            <TouchableOpacity onPress={() => updateQuantity(item.id, -1)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: p.surface2, justifyContent: "center", alignItems: "center" }}>
+                              <Text style={{ fontSize: 18, fontWeight: "bold", color: p.text }}>-</Text>
+                            </TouchableOpacity>
+                            <Text style={{ fontSize: 16, fontWeight: "bold", color: p.text, minWidth: 20, textAlign: "center" }}>{item.quantity}</Text>
+                            <TouchableOpacity onPress={() => updateQuantity(item.id, 1)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: p.surface2, justifyContent: "center", alignItems: "center" }}>
+                              <Text style={{ fontSize: 18, fontWeight: "bold", color: p.text }}>+</Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
+                        <TouchableOpacity onPress={() => voidLine(item)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: p.dangerBg, justifyContent: "center", alignItems: "center", marginLeft: 4 }}>
+                          <Text style={{ color: p.dangerText, fontWeight: "bold", fontSize: 14 }}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+
+              <View style={{ borderTopWidth: 1, borderTopColor: p.border, paddingTop: 12 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: p.muted, fontSize: 14 }}>{vatInclusive ? "Subtotal (excl. VAT)" : "Subtotal"}</Text>
+                  <Text style={{ color: p.text, fontSize: 14 }}>{fm(subtotal)}</Text>
+                </View>
+                {discount > 0 ? (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                    <Text style={{ color: p.muted, fontSize: 14 }}>{t("discount")}</Text>
+                    <Text style={{ color: p.dangerText, fontSize: 14, fontWeight: "bold" }}>-{fm(discount)}</Text>
+                  </View>
+                ) : null}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                  <Text style={{ color: p.muted, fontSize: 14 }}>VAT {(store?.tax_rate || 0)}%</Text>
+                  <Text style={{ color: p.text, fontSize: 14 }}>{fm(tax)}</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16, paddingTop: 8, borderTopWidth: 1, borderTopColor: p.border }}>
+                  <Text style={{ fontSize: 18, fontWeight: "bold", color: p.text }}>{vatInclusive ? "Total (incl. VAT)" : "Total"}</Text>
+                  <Text style={{ fontSize: 22, fontWeight: "bold", color: p.accent }}>{fm(total)}</Text>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  {activeTable ? (
+                    <TouchableOpacity
+                      style={{ flex: 1, backgroundColor: "#64748B", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+                      onPress={() => { parkToTable(); setMobileCartOpen(false); }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>🪑 {t("parkOn")} {activeTable.name}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: p.accent, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+                    onPress={() => { setMobileCartOpen(false); openPaymentModal(); }}
+                    disabled={processing || cart.length === 0}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
+                      {processing ? t("processing") : "💰 " + t("charge") + " " + fm(total)}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
