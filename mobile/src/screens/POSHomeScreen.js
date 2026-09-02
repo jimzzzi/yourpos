@@ -143,7 +143,6 @@ export default function POSHomeScreen() {
   const { can } = useRights();
   const p = getPalette(settings.darkMode);
 
-  // 📱 Mobile Responsive Detection
   const { width: screenWidth } = useWindowDimensions();
   const isMobile = screenWidth < 768;
 
@@ -165,14 +164,12 @@ export default function POSHomeScreen() {
   const [modifierPick, setModifierPick] = useState(null);
   const [scannerVisible, setScannerVisible] = useState(false);
 
-  // 🔥 SCAN MODE STATES
   const [scanMode, setScanMode] = useState(false);
   const [scanModeInput, setScanModeInput] = useState("");
   const [scanCount, setScanCount] = useState(0);
   const [lastScanned, setLastScanned] = useState(null);
   const scanInputRef = useRef(null);
 
-  // 📱 Mobile Cart Modal
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   const [weightModalProduct, setWeightModalProduct] = useState(null);
@@ -231,13 +228,11 @@ export default function POSHomeScreen() {
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.0);
       oscillator.start(audioCtx.currentTime);
       oscillator.stop(audioCtx.currentTime + 1.0);
-      console.log("🔔 Order sound played!");
     } catch (e) {
       console.error("Sound error:", e);
     }
   };
 
-  // 🔥 SCAN MODE: Beep sound
   const playScanBeep = () => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -255,7 +250,6 @@ export default function POSHomeScreen() {
     } catch (e) {}
   };
 
-  // 🔥 Toggle scan mode
   const toggleScanMode = () => {
     setScanMode(!scanMode);
     setScanModeInput("");
@@ -268,7 +262,6 @@ export default function POSHomeScreen() {
     }
   };
 
-  // 🔥 Re-focus scan input when weight modal closes
   useEffect(() => {
     if (!weightModalProduct && scanMode && scanInputRef.current) {
       setTimeout(() => {
@@ -348,6 +341,7 @@ export default function POSHomeScreen() {
             image_url: product.image_url,
             description: product.description,
             track_stock: Boolean(product.track_stock),
+            always_sellable: Boolean(product.always_sellable),
             sold_by_weight: Boolean(product.sold_by_weight),
             is_time_based: Boolean(product.is_time_based),
             time_unit_minutes: product.time_unit_minutes,
@@ -394,7 +388,7 @@ export default function POSHomeScreen() {
         qrCountRef.current = pending.length;
         setQrOrders(pending);
       } catch (e) {
-        console.error("🔍 QR Poll error:", e.message);
+        console.error("QR Poll error:", e.message);
       }
     };
     pollQrOrders();
@@ -432,6 +426,7 @@ export default function POSHomeScreen() {
         (product.category_id != null && (m.category_ids || []).includes(product.category_id))
     );
 
+  // ✅ addToCart with stock gate using FRESH prevCart
   const addToCart = (product, variant, mods) => {
     const modsList = mods || [];
     const modsKey = modsList.map((m) => m.id).join("-");
@@ -439,6 +434,22 @@ export default function POSHomeScreen() {
     const unitPrice = Number(variant.price || 0) + modsList.reduce((s, m) => s + Number(m.price || 0), 0);
 
     setCart((prevCart) => {
+      // ⛔ STOCK GATE — uses fresh prevCart
+      if (product.track_stock && !product.always_sellable) {
+        if (product.stock_quantity <= 0) {
+          Alert.alert("⛔ Out of Stock", product.name + " is currently out of stock.");
+          return prevCart;
+        }
+        const productId = product.product_id || product.id;
+        const inCartQty = prevCart
+          .filter((i) => String(i.product_id) === String(productId))
+          .reduce((sum, i) => sum + (i.sold_by_weight ? 1 : i.quantity), 0);
+        if (inCartQty >= product.stock_quantity) {
+          Alert.alert("⚠️ Stock Limit", product.name + " only has " + product.stock_quantity + " in stock. You already have " + inCartQty + " in cart.");
+          return prevCart;
+        }
+      }
+
       const existing = prevCart.find((item) => item.id === lineId);
       if (existing) {
         return prevCart.map((item) => (item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item));
@@ -517,6 +528,11 @@ export default function POSHomeScreen() {
   };
 
   const handleProductTap = (product) => {
+    if (product.track_stock && !product.always_sellable && product.stock_quantity <= 0) {
+      Alert.alert("⛔ Out of Stock", product.name + " is currently out of stock.");
+      return;
+    }
+
     const availableVariants = product.variants || [];
     if (availableVariants.length === 0) return;
     if (product.sold_by_weight) {
@@ -533,18 +549,36 @@ export default function POSHomeScreen() {
     setVariantPickerProduct(product);
   };
 
+  // ✅ updateQuantity with stock gate using FRESH prevCart
   const updateQuantity = (id, change) => {
-    setCart((prevCart) =>
-      prevCart
-        .map((item) => {
-          if (item.id === id) {
-            const newQty = item.quantity + change;
-            return newQty > 0 ? { ...item, quantity: newQty } : item;
+    setCart((prevCart) => {
+      const item = prevCart.find((i) => i.id === id);
+      if (!item) return prevCart;
+
+      if (change > 0) {
+        const product = products.find((p) => String(p.product_id || p.id) === String(item.product_id));
+        if (product && product.track_stock && !product.always_sellable && product.stock_quantity > 0) {
+          const productId = product.product_id || product.id;
+          const inCartQty = prevCart
+            .filter((i) => String(i.product_id) === String(productId))
+            .reduce((sum, i) => sum + (i.sold_by_weight ? 1 : i.quantity), 0);
+          if (inCartQty >= product.stock_quantity) {
+            Alert.alert("⚠️ Stock Limit", product.name + " only has " + product.stock_quantity + " in stock. You already have " + inCartQty + " in cart.");
+            return prevCart;
           }
-          return item;
+        }
+      }
+
+      return prevCart
+        .map((i) => {
+          if (i.id === id) {
+            const newQty = i.quantity + change;
+            return newQty > 0 ? { ...i, quantity: newQty } : i;
+          }
+          return i;
         })
-        .filter((item) => item.quantity > 0)
-    );
+        .filter((i) => i.quantity > 0);
+    });
   };
 
   const voidLine = (item) => {
@@ -744,6 +778,21 @@ export default function POSHomeScreen() {
           }
         } catch (printErr) { console.error("Kitchen print failed on park:", printErr); }
       }
+
+      try {
+        await api.post("/kitchen/orders", {
+          order_id: null,
+          bill_number: currentTable.open_order?.bill_number || null,
+          source: "pos",
+          type: "dine_in",
+          table_name: currentTable.name,
+          items: addedItems.map((i) => ({
+            name: i.name,
+            quantity: i.sold_by_weight ? 1 : i.quantity,
+            modifiers: i.modifiers || [],
+          })),
+        });
+      } catch (e) { console.error("KDS send failed:", e); }
     } catch (error) {
       console.error("Park table error:", error);
       Alert.alert("Error", "Failed to park order: " + (error.response?.data?.error || error.message || "Database connection issue."));
@@ -816,7 +865,6 @@ export default function POSHomeScreen() {
     }
   };
 
-  // 🔥 SCAN MODE: Process barcode and auto-refocus
   const handleScanModeInput = (code) => {
     const cleanCode = String(code || "").trim();
     if (!cleanCode) return;
@@ -956,6 +1004,20 @@ export default function POSHomeScreen() {
           try { await printKitchenTicket({ type: "NEW", table: ticketTable, billNumber: billNumber, dining: diningOption, items: g.items, settings, printer: g.printer }); }
           catch (printErr) { console.error("Kitchen print failed:", printErr); }
         }
+        try {
+          await api.post("/kitchen/orders", {
+            order_id: order.client_order_id,
+            bill_number: billNumber,
+            source: "pos",
+            type: diningOption === "takeaway" ? "takeaway" : "counter",
+            table_name: null,
+            items: finalCart.map((i) => ({
+              name: i.name,
+              quantity: i.sold_by_weight ? 1 : i.quantity,
+              modifiers: i.modifiers || [],
+            })),
+          });
+        } catch (e) { console.error("KDS send failed:", e); }
       }
       if (activeTakeawayOrder) {
         try { await api.put(`/takeaway/orders/${activeTakeawayOrder.id}/complete`, { payment_method: payment.payment_method }); }
@@ -1041,7 +1103,7 @@ export default function POSHomeScreen() {
   }, [weightInput, weightUnit, weightModalVariant]);
 
   const renderGridCard = (item) => {
-    const noStock = item.track_stock && item.stock_quantity <= 0;
+    const noStock = item.track_stock && !item.always_sellable && item.stock_quantity <= 0;
     return (
       <TouchableOpacity key={item.id} style={[styles.productCard, noStock && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
         <View style={styles.productImageBox}>
@@ -1057,7 +1119,7 @@ export default function POSHomeScreen() {
   };
 
   const renderListRow = (item) => (
-    <TouchableOpacity key={item.id} style={[styles.listCard, item.track_stock && item.stock_quantity <= 0 && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
+    <TouchableOpacity key={item.id} style={[styles.listCard, item.track_stock && !item.always_sellable && item.stock_quantity <= 0 && styles.outOfStockCard]} onPress={() => handleProductTap(item)}>
       <View style={styles.listIcon}>
         {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.listImage} resizeMode="cover" /> : <Text style={{ fontSize: 22 }}>🍽️</Text>}
       </View>
@@ -1087,7 +1149,6 @@ export default function POSHomeScreen() {
 
       <View style={isMobile ? { flex: 1 } : styles.productsPanel}>
         <View style={styles.searchContainer}>
-          {/* 🔥 Scan Mode Toggle Button */}
           <TouchableOpacity
             style={{
               backgroundColor: scanMode ? "#DC2626" : "#0F172A",
@@ -1105,7 +1166,6 @@ export default function POSHomeScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* 🔥 Search or Scan Input based on scan mode */}
           {scanMode ? (
             <TextInput
               ref={scanInputRef}
@@ -1160,7 +1220,6 @@ export default function POSHomeScreen() {
           ) : null}
         </View>
 
-        {/* 🔥 Scan Mode Status Bar */}
         {scanMode ? (
           <View style={{
             backgroundColor: "#DC2626",
@@ -1245,7 +1304,6 @@ export default function POSHomeScreen() {
         )}
       </View>
 
-      {/* 📱 Hide desktop cart panel on mobile */}
       {!isMobile && (
       <View style={styles.cartPanel}>
         <View style={styles.cartHeader}>
@@ -1452,7 +1510,6 @@ export default function POSHomeScreen() {
         onConfirm={(selected) => { if (modifierPick) addToCart(modifierPick.product, modifierPick.variant, selected); setModifierPick(null); }}
       />
 
-      {/* Weight Modal */}
       <Modal visible={Boolean(weightModalProduct)} transparent animationType="fade" onRequestClose={() => { setWeightModalProduct(null); setWeightInput(""); }}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1499,7 +1556,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* Pre-print Modal */}
       <Modal visible={Boolean(preprintTable)} transparent animationType="fade" onRequestClose={() => setPreprintTable(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1533,7 +1589,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* Payment Modal */}
       <Modal visible={paymentModalVisible} transparent animationType="fade" onRequestClose={closePaymentClearTakeaway}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1586,7 +1641,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* Discount Modal */}
       <Modal visible={discountModalVisible} transparent animationType="fade" onRequestClose={() => setDiscountModalVisible(false)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1612,7 +1666,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* Sale Completed Modal */}
       <Modal visible={Boolean(completedSale)} transparent animationType="fade">
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1630,7 +1683,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* Cash In/Out Modal */}
       <Modal visible={Boolean(cashModal)} transparent animationType="fade" onRequestClose={() => setCashModal(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1651,7 +1703,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* Void Reason Modal */}
       <Modal visible={Boolean(voidReasonModal)} transparent animationType="fade" onRequestClose={() => setVoidReasonModal(null)}>
         <View style={styles.paymentOverlay}>
           <View style={styles.paymentCard}>
@@ -1670,7 +1721,6 @@ export default function POSHomeScreen() {
         </View>
       </Modal>
 
-      {/* 📱 MOBILE: Floating Cart Bar */}
       {isMobile && cart.length > 0 && !mobileCartOpen && !paymentModalVisible && (
         <TouchableOpacity
           style={{
@@ -1703,7 +1753,6 @@ export default function POSHomeScreen() {
         </TouchableOpacity>
       )}
 
-      {/* 📱 MOBILE: Cart Modal */}
       {isMobile && (
         <Modal visible={mobileCartOpen} transparent animationType="slide" onRequestClose={() => setMobileCartOpen(false)}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>

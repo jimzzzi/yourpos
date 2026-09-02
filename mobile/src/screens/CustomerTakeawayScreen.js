@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Image, TextInput, Modal, Alert } from "react-native";
 
 const ACCENT = "#E8590C";
-const BACKEND_URL = "https://yourpos-backend.onrender.com"; // Replace with your actual backend URL
+const BACKEND_URL = "https://yourpos-backend.onrender.com";
 
 export default function CustomerTakeawayScreen({ token, storeId }) {
   const [loading, setLoading] = useState(true);
@@ -33,17 +33,23 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
     try {
       setLoading(true);
       setError(null);
-      
-      // Use token if available, otherwise fall back to store ID
       const menuUrl = token 
         ? `${BACKEND_URL}/api/takeaway/menu?token=${token}`
         : `${BACKEND_URL}/api/takeaway/menu?store=${storeId}`;
-      
       const res = await fetch(menuUrl);
       if (!res.ok) throw new Error("Failed to load menu");
       const data = await res.json();
       setStore(data.store || null);
-      setProducts(data.products || []);
+
+      // ⛔ Filter out 0-stock items (unless always_sellable)
+      const filteredProducts = (data.products || []).filter((p) => {
+        const variants = p.variants || [];
+        const totalStock = variants.reduce((s, v) => s + Number(v.stock_quantity || 0), 0);
+        if (p.track_stock && !p.always_sellable && totalStock <= 0) return false;
+        return true;
+      });
+      setProducts(filteredProducts);
+
       setCategories(data.categories || []);
       setModifiers(data.modifiers || []);
     } catch (e) {
@@ -56,7 +62,6 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
 
   useEffect(() => { loadMenu(); }, []);
 
-  // Poll order status after placing
   useEffect(() => {
     if (!orderPlaced || !orderPlaced.order_id) return;
     const t = setInterval(async () => {
@@ -102,8 +107,28 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
     setSelectedMods((prev) => (prev.find((x) => x.id === m.id) ? prev.filter((x) => x.id !== m.id) : [...prev, m]));
   };
 
+  // ✅ addToCart with stock validation
   const addToCart = () => {
     if (!itemModal || !selectedVariant) return;
+
+    // ⛔ Stock check
+    if (itemModal.track_stock && !itemModal.always_sellable) {
+      const variants = itemModal.variants || [];
+      const totalStock = variants.reduce((s, v) => s + Number(v.stock_quantity || 0), 0);
+      if (totalStock <= 0) {
+        window.alert("⛔ Out of Stock: " + itemModal.name);
+        return;
+      }
+      const productId = itemModal.id;
+      const inCartQty = cart
+        .filter((i) => String(i.product_id) === String(productId))
+        .reduce((sum, i) => sum + i.quantity, 0);
+      if (inCartQty + qty > totalStock) {
+        window.alert("⚠️ Stock Limit: " + itemModal.name + " only has " + totalStock + " in stock. You already have " + inCartQty + " in cart.");
+        return;
+      }
+    }
+
     const modsPrice = selectedMods.reduce((s, m) => s + Number(m.price || 0), 0);
     const unitPrice = Number(selectedVariant.price || 0) + modsPrice;
     const modsKey = selectedMods.map((m) => m.id).join("-");
@@ -122,8 +147,32 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
     setItemModal(null);
   };
 
+  // ✅ updateQty with stock validation
   const updateQty = (id, delta) => {
-    setCart((prev) => prev.map((i) => (i.id === id ? { ...i, quantity: i.quantity + delta } : i)).filter((i) => i.quantity > 0));
+    setCart((prev) => {
+      const item = prev.find((i) => i.id === id);
+      if (!item) return prev;
+
+      // ⛔ Block increasing beyond stock
+      if (delta > 0) {
+        const product = products.find((p) => String(p.id) === String(item.product_id));
+        if (product && product.track_stock && !product.always_sellable) {
+          const variants = product.variants || [];
+          const totalStock = variants.reduce((s, v) => s + Number(v.stock_quantity || 0), 0);
+          const inCartQty = prev
+            .filter((i) => String(i.product_id) === String(item.product_id))
+            .reduce((sum, i) => sum + i.quantity, 0);
+          if (inCartQty >= totalStock) {
+            window.alert("⚠️ Stock Limit: " + product.name + " only has " + totalStock + " in stock.");
+            return prev;
+          }
+        }
+      }
+
+      return prev
+        .map((i) => (i.id === id ? { ...i, quantity: i.quantity + delta } : i))
+        .filter((i) => i.quantity > 0);
+    });
   };
 
   const placeOrder = async () => {
@@ -145,12 +194,10 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
           })),
         }),
       });
-      
       if (!res.ok) {
         const errText = await res.text().catch(() => "No response body");
         throw new Error("Status " + res.status + ": " + errText);
       }
-      
       const data = await res.json();
       setOrderPlaced(data || { order_id: null });
       setOrderStatus("pending");
@@ -159,23 +206,20 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
       setCartOpen(false);
     } catch (e) {
       console.error("Place order error:", e);
-      window.alert("ORDER ERROR: " + (e.message || "Unknown error. Check F12 console."));
+      window.alert("ORDER ERROR: " + (e.message || "Unknown error."));
     } finally {
       setPlacing(false);
     }
   };
 
-  // ===== "ORDER MORE" BUTTON - KEEPS CUSTOMER INFO =====
   const handleOrderMore = () => {
     setOrderPlaced(null);
     setOrderStatus("pending");
     setCart([]);
     setNote("");
     setCartOpen(false);
-    // ✅ Keep customerName and customerPhone pre-filled!
   };
 
-  // ===== SUCCESS SCREEN =====
   if (orderPlaced) {
     return (
       <View style={s.centerWrap}>
@@ -185,8 +229,6 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
           <Text style={s.successSub}>
             Order <Text style={{ fontWeight: "bold" }}>#{orderPlaced.order_number || ""}</Text> has been sent to the kitchen.
           </Text>
-          
-          {/* 🎯 LIVE ORDER STATUS TRACKER */}
           <View style={s.statusTracker}>
             <View style={[s.statusStep, orderStatus !== "pending" && s.statusStepActive]}>
               <View style={[s.statusDot, orderStatus !== "pending" && s.statusDotActive]} />
@@ -203,7 +245,6 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
               <Text style={s.statusLabel}>Ready</Text>
             </View>
           </View>
-
           <View style={s.successBadge}>
             <Text style={s.successBadgeText}>
               {orderStatus === "pending" ? "🟡 Waiting for confirmation…" : 
@@ -212,12 +253,9 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
                "📋 " + orderStatus}
             </Text>
           </View>
-          
           <Text style={{ fontSize: 13, color: "#64748B", textAlign: "center", marginBottom: 18 }}>
             💵 Please pay at the counter when you pick up your order.
           </Text>
-          
-          {/* 🛒 ORDER MORE BUTTON - Keeps customer info */}
           <TouchableOpacity style={s.successBtn} onPress={handleOrderMore}>
             <Text style={s.successBtnText}>🛒 Order More</Text>
           </TouchableOpacity>
@@ -309,7 +347,6 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
         </TouchableOpacity>
       ) : null}
 
-      {/* ITEM MODAL */}
       <Modal visible={Boolean(itemModal)} transparent animationType="slide" onRequestClose={() => setItemModal(null)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
@@ -369,7 +406,6 @@ export default function CustomerTakeawayScreen({ token, storeId }) {
         </View>
       </Modal>
 
-      {/* CART MODAL */}
       <Modal visible={cartOpen} transparent animationType="slide" onRequestClose={() => setCartOpen(false)}>
         <View style={s.modalOverlay}>
           <View style={s.cartCard}>
@@ -505,8 +541,6 @@ const s = StyleSheet.create({
   successBadgeText: { color: "#B45309", fontWeight: "bold", fontSize: 13 },
   successBtn: { backgroundColor: ACCENT, borderRadius: 12, paddingHorizontal: 28, paddingVertical: 14 },
   successBtnText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
-  
-  // 🎯 NEW: Order Status Tracker Styles
   statusTracker: { flexDirection: "row", alignItems: "center", marginBottom: 24, width: "100%" },
   statusStep: { alignItems: "center", flex: 1 },
   statusDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#E2E8F0", borderWidth: 2, borderColor: "#CBD5E1" },

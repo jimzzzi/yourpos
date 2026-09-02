@@ -55,7 +55,16 @@ export default function CustomerMenuScreen() {
       const res = await api.get("/qr/menu", { params: { t: tableId } });
       setStore(res.data.store || null);
       setTable(res.data.table || null);
-      setProducts(res.data.products || []);
+
+      // ⛔ Hide zero stock items from QR menu
+      const safeProducts = (res.data.products || []).filter((p) => {
+        if (!p.track_stock || p.always_sellable) return true;
+        const variants = p.variants || [];
+        const totalStock = variants.reduce((s, v) => s + Number(v.stock_quantity || 0), 0);
+        return totalStock > 0;
+      });
+      setProducts(safeProducts);
+
       setCategories(res.data.categories || []);
       setModifiers(res.data.modifiers || []);
     } catch (e) {
@@ -174,7 +183,6 @@ export default function CustomerMenuScreen() {
     }
   };
 
-  // ===== SUCCESS SCREEN =====
   if (orderPlaced) {
     return (
       <View style={s.successWrap}>
@@ -185,7 +193,7 @@ export default function CustomerMenuScreen() {
             Thank you! Your order for <Text style={{ fontWeight: "bold" }}>{table ? table.name : "your table"}</Text> has been sent to the kitchen.
           </Text>
           <View style={s.successBadge}>
-            <Text style={s.successBadgeText}>👨🍳 Preparing your food…</Text>
+            <Text style={s.successBadgeText}>👨‍🍳 Preparing your food…</Text>
           </View>
           <TouchableOpacity style={s.successBtn} onPress={() => setOrderPlaced(null)}>
             <Text style={s.successBtnText}>Order More</Text>
@@ -195,7 +203,6 @@ export default function CustomerMenuScreen() {
     );
   }
 
-  // ===== LOADING =====
   if (loading) {
     return (
       <View style={s.centerWrap}>
@@ -206,7 +213,6 @@ export default function CustomerMenuScreen() {
     );
   }
 
-  // ===== ERROR =====
   if (error && products.length === 0) {
     return (
       <View style={s.centerWrap}>
@@ -223,7 +229,6 @@ export default function CustomerMenuScreen() {
   return (
     <View style={s.app}>
       <ScrollView style={s.scroll} contentContainerStyle={{ paddingBottom: 120 }}>
-        {/* ===== HERO HEADER ===== */}
         <View style={s.hero}>
           <View style={s.heroTop}>
             <Text style={s.heroEmoji}>🍽️</Text>
@@ -235,12 +240,10 @@ export default function CustomerMenuScreen() {
           <Text style={s.heroSub}>Scan • Order • Enjoy ✨</Text>
         </View>
 
-        {/* ===== SEARCH ===== */}
         <View style={s.searchWrap}>
           <TextInput style={s.searchInput} placeholder="🔍 Search dishes…" placeholderTextColor="#94A3B8" value={search} onChangeText={setSearch} />
         </View>
 
-        {/* ===== CATEGORY CHIPS ===== */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.catBar} contentContainerStyle={{ paddingHorizontal: 16 }}>
           <TouchableOpacity style={[s.catChip, selectedCategory == null && s.catChipActive]} onPress={() => setSelectedCategory(null)}>
             <Text style={[s.catChipText, selectedCategory == null && s.catChipTextActive]}>All</Text>
@@ -252,7 +255,6 @@ export default function CustomerMenuScreen() {
           ))}
         </ScrollView>
 
-        {/* ===== PRODUCTS ===== */}
         <View style={s.listWrap}>
           {filtered.length === 0 ? (
             <View style={s.emptyBox}>
@@ -263,9 +265,8 @@ export default function CustomerMenuScreen() {
             filtered.map((p) => {
               const variants = p.variants || [];
               const minPrice = variants.length ? Math.min(...variants.map((v) => Number(v.price || 0))) : 0;
-              const out = p.track_stock && variants.reduce((s2, v) => s2 + Number(v.stock_quantity || 0), 0) <= 0;
               return (
-                <TouchableOpacity key={p.id} style={[s.card, out && s.cardOut]} disabled={out} onPress={() => openItem(p)}>
+                <TouchableOpacity key={p.id} style={s.card} onPress={() => openItem(p)}>
                   <View style={s.cardBody}>
                     <View style={s.cardInfo}>
                       <Text style={s.cardName} numberOfLines={2}>{p.name}</Text>
@@ -281,11 +282,7 @@ export default function CustomerMenuScreen() {
                       ) : (
                         <Text style={s.cardEmoji}>🍽️</Text>
                       )}
-                      {out ? (
-                        <View style={s.outBadge}><Text style={s.outBadgeText}>Sold Out</Text></View>
-                      ) : (
-                        <View style={s.addDot}><Text style={s.addDotText}>+</Text></View>
-                      )}
+                      <View style={s.addDot}><Text style={s.addDotText}>+</Text></View>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -297,7 +294,6 @@ export default function CustomerMenuScreen() {
         <Text style={s.footer}>Powered by YourPOS ⚡</Text>
       </ScrollView>
 
-      {/* ===== FLOATING CART BAR ===== */}
       {cartCount > 0 ? (
         <TouchableOpacity style={s.cartBar} onPress={() => setCartOpen(true)}>
           <View style={s.cartBarLeft}>
@@ -308,7 +304,6 @@ export default function CustomerMenuScreen() {
         </TouchableOpacity>
       ) : null}
 
-      {/* ===== ITEM MODAL ===== */}
       <Modal visible={Boolean(itemModal)} transparent animationType="slide" onRequestClose={() => setItemModal(null)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
@@ -372,7 +367,6 @@ export default function CustomerMenuScreen() {
         </View>
       </Modal>
 
-      {/* ===== CART MODAL ===== */}
       <Modal visible={cartOpen} transparent animationType="slide" onRequestClose={() => setCartOpen(false)}>
         <View style={s.modalOverlay}>
           <View style={s.cartCard}>
@@ -448,7 +442,6 @@ const s = StyleSheet.create({
   emptyText: { color: "#94A3B8", fontSize: 15 },
 
   card: { backgroundColor: "#fff", borderRadius: 18, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, elevation: 3, overflow: "hidden" },
-  cardOut: { opacity: 0.55 },
   cardBody: { flexDirection: "row", padding: 12 },
   cardInfo: { flex: 1, paddingRight: 12, justifyContent: "center" },
   cardName: { fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 4 },
@@ -461,8 +454,6 @@ const s = StyleSheet.create({
   cardEmoji: { fontSize: 40 },
   addDot: { position: "absolute", bottom: 6, right: 6, width: 26, height: 26, borderRadius: 13, backgroundColor: ACCENT, justifyContent: "center", alignItems: "center" },
   addDotText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  outBadge: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#0F172A", paddingVertical: 4, alignItems: "center" },
-  outBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
 
   footer: { textAlign: "center", color: "#CBD5E1", fontSize: 12, marginTop: 20, marginBottom: 10 },
 
