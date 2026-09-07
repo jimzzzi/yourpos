@@ -16,10 +16,14 @@ const cashRoutes = require("./routes/cash");
 const adminRoutes = require("./routes/admin");
 const tablesRoutes = require("./routes/tables");
 const qrRoutes = require("./routes/qr");
+const takeawayRoutes = require("./routes/takeaway");
+const kitchenRoutes = require("./routes/kitchen");
 const printRoutes = require("./routes/print");
 const uploadRoutes = require("./routes/upload");
 const printerRoutes = require("./routes/printer");
 const superAdminRoutes = require("./routes/superAdmin");
+const ingredientsRoutes = require("./routes/ingredients");
+const recipesRoutes = require("./routes/recipes");
 
 
 // ...
@@ -88,6 +92,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/tables", tablesRoutes);
 app.use("/api/qr", qrRoutes);
 app.use("/api/takeaway", require("./routes/takeaway"));
+app.use("/api/kitchen", kitchenRoutes);
 app.use("/api/reports", require("./routes/reports"));
 app.use("/api/telegram", require("./routes/telegram"));
 app.use("/api/users", require("./routes/users"));
@@ -95,6 +100,8 @@ app.use("/api/print", printRoutes);
 app.use("/api/printer", printerRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/super-admin", superAdminRoutes);
+app.use("/api/ingredients", ingredientsRoutes);
+app.use("/api/recipes", recipesRoutes);
 
 
 
