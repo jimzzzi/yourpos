@@ -133,6 +133,45 @@ function makeStyles(p, cols) {
     qrRejectText: { color: p.text, fontWeight: "bold", fontSize: 13 },
     weightBadge: { position: "absolute", top: 4, left: 4, backgroundColor: "#F59E0B", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, zIndex: 5 },
     weightBadgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+    // 🔌 SERIAL SCALE STYLES
+    scaleWidget: {
+      backgroundColor: "#0F172A",
+      padding: 12,
+      paddingHorizontal: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: p.border,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    scaleWidgetLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    scaleStatusDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    scaleStatusText: {
+      color: "#94A3B8",
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    scaleWeightText: {
+  color: "#4ADE80",
+  fontSize: 36,        // ⬅️ Bigger font
+  fontWeight: "900",
+  fontFamily: "monospace",
+  letterSpacing: 1,    // ⬅️ Better spacing for large numbers
+},
+    scaleUnitText: {
+      color: "#94A3B8",
+      fontSize: 14,
+      fontWeight: "600",
+      marginLeft: 4,
+    },
   };
 }
 
@@ -213,6 +252,11 @@ export default function POSHomeScreen() {
   const [preprintIsCopy, setPreprintIsCopy] = useState(true);
   const [preprintLoading, setPreprintLoading] = useState(false);
 
+  // 🔌 SERIAL SCALE STATES
+  const [liveWeight, setLiveWeight] = useState(0);
+  const [scaleConnected, setScaleConnected] = useState(false);
+  const liveWeightRef = useRef(0); // Ref to avoid stale closures
+
   const playOrderSound = () => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -269,6 +313,82 @@ export default function POSHomeScreen() {
       }, 300);
     }
   }, [weightModalProduct, scanMode]);
+
+  // 🔌 SERIAL SCALE WEBSOCKET CONNECTION
+  useEffect(() => {
+    const serialScale = settings.serialScale || {};
+    if (!serialScale.enabled) {
+      setScaleConnected(false);
+      setLiveWeight(0);
+      liveWeightRef.current = 0;
+      return;
+    }
+
+    let ws = null;
+    let reconnectTimeout = null;
+    let isMounted = true;
+
+    const connect = () => {
+      try {
+        ws = new WebSocket("ws://localhost:8081");
+        
+        ws.onopen = () => {
+          if (isMounted) setScaleConnected(true);
+        };
+        
+        ws.onmessage = (event) => {
+          if (!isMounted) return;
+          const raw = event.data;
+          
+          // Apply skipChars trim from settings
+          let clean = raw;
+          const skip = Number(serialScale.skipChars || 0);
+          if (skip > 0 && clean.length > skip) {
+            clean = clean.substring(skip);
+          }
+          
+          // Replace comma with dot and extract number
+          clean = clean.replace(/,/g, '.');
+          const match = clean.match(/[-+]?\d*\.?\d+/);
+          
+          if (match) {
+            const weight = parseFloat(match[0]);
+            if (!isNaN(weight) && weight >= 0) {
+              setLiveWeight(weight);
+              liveWeightRef.current = weight;
+            }
+          }
+        };
+        
+        ws.onclose = () => {
+          if (isMounted) {
+            setScaleConnected(false);
+            reconnectTimeout = setTimeout(connect, 3000);
+          }
+        };
+        
+        ws.onerror = () => {
+          if (isMounted) {
+            setScaleConnected(false);
+            if (ws) ws.close();
+          }
+        };
+      } catch (e) {
+        if (isMounted) {
+          setScaleConnected(false);
+          reconnectTimeout = setTimeout(connect, 3000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(reconnectTimeout);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+    };
+  }, [settings.serialScale?.enabled, settings.serialScale?.skipChars]);
 
   const taxRate = Number(store?.tax_rate || 0) / 100;
   const vatInclusive = Boolean(store && store.tax_inclusive);
@@ -426,6 +546,40 @@ export default function POSHomeScreen() {
         (product.category_id != null && (m.category_ids || []).includes(product.category_id))
     );
 
+  // 🔌 HELPER: Add weighed item to cart using live weight or manual weight
+  const addWeighedItemToCart = (product, variant, weightKg) => {
+    const pricePerKg = Number(variant.price || 0);
+    const lineId = "W_" + String(variant.id) + "_" + weightKg.toFixed(3);
+    
+    setCart((prevCart) => {
+      const existing = prevCart.find((item) => item.id === lineId);
+      if (existing) {
+        return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
+      }
+      return [
+        ...prevCart,
+        {
+          id: lineId,
+          variant_id: variant.id,
+          product_id: product.product_id || product.id,
+          category_id: product.category_id,
+          name: product.name,
+          description: product.description,
+          price: pricePerKg,
+          quantity: 1,
+          sold_by_weight: true,
+          weight_kg: weightKg,
+          unit_price_per_kg: pricePerKg,
+          modifiers: [],
+          is_time_based: false,
+          time_unit_minutes: null,
+          time_start: null,
+        },
+      ];
+    });
+    playScanBeep(); // Feedback sound when weight is captured
+  };
+
   // ✅ addToCart with stock gate using FRESH prevCart
   const addToCart = (product, variant, mods) => {
     const modsList = mods || [];
@@ -484,34 +638,7 @@ export default function POSHomeScreen() {
       Alert.alert("Weight Required", "Please enter a valid weight.");
       return;
     }
-    const pricePerKg = Number(weightModalVariant.price || 0);
-    const lineId = "W_" + String(weightModalVariant.id) + "_" + weightKg.toFixed(3);
-    setCart((prevCart) => {
-      const existing = prevCart.find((item) => item.id === lineId);
-      if (existing) {
-        return prevCart.map((item) => item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item);
-      }
-      return [
-        ...prevCart,
-        {
-          id: lineId,
-          variant_id: weightModalVariant.id,
-          product_id: weightModalProduct.product_id || weightModalProduct.id,
-          category_id: weightModalProduct.category_id,
-          name: weightModalProduct.name,
-          description: weightModalProduct.description,
-          price: pricePerKg,
-          quantity: 1,
-          sold_by_weight: true,
-          weight_kg: weightKg,
-          unit_price_per_kg: pricePerKg,
-          modifiers: [],
-          is_time_based: false,
-          time_unit_minutes: null,
-          time_start: null,
-        },
-      ];
-    });
+    addWeighedItemToCart(weightModalProduct, weightModalVariant, weightKg);
     setWeightModalProduct(null);
     setWeightModalVariant(null);
     setWeightInput("");
@@ -535,13 +662,25 @@ export default function POSHomeScreen() {
 
     const availableVariants = product.variants || [];
     if (availableVariants.length === 0) return;
+
     if (product.sold_by_weight) {
+      const variant = availableVariants[0];
+      
+      // 🔌 SERIAL SCALE: Use live weight if scale is connected and has weight
+      const serialScale = settings.serialScale || {};
+      if (serialScale.enabled && scaleConnected && liveWeightRef.current > 0) {
+        addWeighedItemToCart(product, variant, liveWeightRef.current);
+        return;
+      }
+      
+      // Fallback to manual weight modal
       setWeightModalProduct(product);
-      setWeightModalVariant(availableVariants[0]);
+      setWeightModalVariant(variant);
       setWeightInput("");
       setWeightUnit("kg");
       return;
     }
+
     if (availableVariants.length === 1) {
       proceedToAdd(product, availableVariants[0]);
       return;
@@ -851,7 +990,19 @@ export default function POSHomeScreen() {
     for (const product of products) {
       const variant = (product.variants || []).find((v) => v.barcode === code || v.sku === code);
       if (variant) {
-        if (product.sold_by_weight) { setWeightModalProduct(product); setWeightModalVariant(variant); setWeightInput(""); setWeightUnit("kg"); }
+        if (product.sold_by_weight) {
+          // 🔌 SERIAL SCALE: Use live weight if available
+          const serialScale = settings.serialScale || {};
+          if (serialScale.enabled && scaleConnected && liveWeightRef.current > 0) {
+            addWeighedItemToCart(product, variant, liveWeightRef.current);
+            return;
+          }
+          // Fallback to manual modal
+          setWeightModalProduct(product);
+          setWeightModalVariant(variant);
+          setWeightInput("");
+          setWeightUnit("kg");
+        }
         else proceedToAdd(product, variant);
         return;
       }
@@ -1134,6 +1285,9 @@ export default function POSHomeScreen() {
   const pendingTakeawayCount = takeawayOrders.filter(o => o.status === "pending").length;
   const cartItemCount = cart.reduce((s, i) => s + i.quantity, 0);
 
+  // 🔌 Check if serial scale is enabled
+  const serialScaleEnabled = Boolean(settings.serialScale?.enabled);
+
   return (
     <View style={isMobile ? { flex: 1, backgroundColor: p.bg } : styles.container}>
       <HardwareScannerInput
@@ -1338,6 +1492,24 @@ export default function POSHomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* 🔌 SERIAL SCALE LIVE WEIGHT WIDGET */}
+        {serialScaleEnabled ? (
+          <View style={styles.scaleWidget}>
+            <View style={styles.scaleWidgetLeft}>
+              <View style={[styles.scaleStatusDot, { backgroundColor: scaleConnected ? "#4ADE80" : "#EF4444" }]} />
+              <Text style={styles.scaleStatusText}>
+                {scaleConnected ? "⚖️ Scale Connected" : "⚖️ Scale Offline"}
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+              <Text style={styles.scaleWeightText}>
+                {liveWeight.toFixed(3)}
+              </Text>
+              <Text style={styles.scaleUnitText}>kg</Text>
+            </View>
+          </View>
+        ) : null}
 
         <ScrollView style={styles.cartList}>
           {cart.length === 0 ? (

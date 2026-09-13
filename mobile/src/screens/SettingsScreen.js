@@ -78,7 +78,6 @@ function QROrderingCard() {
     } catch (e) { Alert.alert("❌", e.message); }
   };
 
-  // 🥡 Print Takeaway QR with Secure Token
   const printTakeawayQR = async () => {
     try {
       const res = await api.get("/takeaway/qr-link");
@@ -127,7 +126,6 @@ function QROrderingCard() {
           <TouchableOpacity style={{ backgroundColor: "#0F172A", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 6 }} onPress={printAll}>
             <Text style={{ color: "#fff", fontWeight: "bold" }}>🖨 Print ALL Table QRs</Text>
           </TouchableOpacity>
-          {/* 🥡 Print Takeaway QR with Secure Token */}
           <TouchableOpacity style={{ backgroundColor: "#E8590C", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 6 }} onPress={printTakeawayQR}>
             <Text style={{ color: "#fff", fontWeight: "bold" }}>🥡 Print TAKEAWAY QR (Counter Sticker)</Text>
           </TouchableOpacity>
@@ -226,7 +224,6 @@ function CashDrawerCard() {
   );
 }
 
-// ⚖️ SCALE BARCODE SETTINGS CARD
 function ScaleBarcodeCard() {
   const ctx = useSettings();
   const { settings } = ctx;
@@ -412,6 +409,163 @@ function ScaleBarcodeCard() {
   );
 }
 
+// 🔌 SERIAL SCALE CARD (WebSocket Bridge Connection)
+function SerialScaleCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const save = ctx.updateSettings || (() => {});
+
+  const serial = settings.serialScale || { enabled: false, skipChars: 0 };
+  const setSerial = (patch) => save({ serialScale: { ...serial, ...patch } });
+
+  const [rawData, setRawData] = useState("");
+  const [parsedWeight, setParsedWeight] = useState("0.000");
+  const [wsConnected, setWsConnected] = useState(false);
+  const [skipCharsInput, setSkipCharsInput] = useState(String(serial.skipChars || 0));
+
+  useEffect(() => {
+    setSkipCharsInput(String(serial.skipChars || 0));
+  }, [serial.skipChars]);
+
+  useEffect(() => {
+    if (!serial.enabled) {
+      setWsConnected(false);
+      setRawData("");
+      setParsedWeight("0.000");
+      return;
+    }
+
+    let ws;
+    let reconnectTimeout;
+    let isMounted = true;
+
+    const connect = () => {
+      try {
+        ws = new WebSocket("ws://localhost:8081");
+        
+        ws.onopen = () => {
+          if (isMounted) setWsConnected(true);
+        };
+        
+        ws.onmessage = (event) => {
+          if (!isMounted) return;
+          const raw = event.data;
+          setRawData(raw);
+          
+          // Clean the data based on skipChars setting
+          let clean = raw;
+          const skip = Number(skipCharsInput) || 0;
+          if (skip > 0 && clean.length > skip) {
+            clean = clean.substring(skip);
+          }
+          
+          // Replace comma with dot and extract number
+          clean = clean.replace(/,/g, '.');
+          const match = clean.match(/[-+]?\d*\.?\d+/);
+          
+          if (match) {
+            setParsedWeight(match[0]);
+          } else {
+            setParsedWeight("0.000");
+          }
+        };
+        
+        ws.onclose = () => {
+          if (isMounted) {
+            setWsConnected(false);
+            reconnectTimeout = setTimeout(connect, 3000);
+          }
+        };
+        
+        ws.onerror = () => {
+          if (isMounted) {
+            setWsConnected(false);
+            if (ws) ws.close();
+          }
+        };
+      } catch (e) {
+        if (isMounted) {
+          setWsConnected(false);
+          reconnectTimeout = setTimeout(connect, 3000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(reconnectTimeout);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+    };
+  }, [serial.enabled, skipCharsInput]);
+
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>🔌 Serial Scale (COM Port)</Text>
+      
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 12 }}>
+        Connects to the local scale bridge service running on your PC (ws://localhost:8081).
+      </Text>
+
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+        <TouchableOpacity 
+          style={{ flex: 1, backgroundColor: serial.enabled ? "#43A047" : "#fff", borderWidth: 2, borderColor: serial.enabled ? "#43A047" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} 
+          onPress={() => setSerial({ enabled: true })}
+        >
+          <Text style={{ color: serial.enabled ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={{ flex: 1, backgroundColor: !serial.enabled ? "#EF4444" : "#fff", borderWidth: 2, borderColor: !serial.enabled ? "#EF4444" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} 
+          onPress={() => setSerial({ enabled: false })}
+        >
+          <Text style={{ color: !serial.enabled ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+        </TouchableOpacity>
+      </View>
+
+      {serial.enabled ? (
+        <View>
+          {/* Connection Status */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12, padding: 10, backgroundColor: wsConnected ? "#F0FDF4" : "#FEF2F2", borderRadius: 8 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: wsConnected ? "#16A34A" : "#EF4444" }} />
+            <Text style={{ fontSize: 13, fontWeight: "600", color: wsConnected ? "#16A34A" : "#EF4444" }}>
+              {wsConnected ? "Connected to Scale Bridge" : "Disconnected (Run node scale.js)"}
+            </Text>
+          </View>
+
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F172A", marginBottom: 6 }}>✂️ Trim Garbage (Skip First X Characters)</Text>
+          <TextInput 
+            style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", color: "#0F172A", marginBottom: 8 }} 
+            value={skipCharsInput} 
+            onChangeText={(v) => {
+              setSkipCharsInput(v);
+              setSerial({ skipChars: Number(v) || 0 });
+            }} 
+            placeholder="0" 
+            keyboardType="number-pad" 
+          />
+          <Text style={{ fontSize: 11, color: "#94A3B8", marginBottom: 12 }}>
+            If scale sends "ST,+ 1.250", count characters before the number starts and enter it here.
+          </Text>
+
+          {/* Live Preview */}
+          <View style={{ backgroundColor: "#F8FAFC", borderRadius: 8, padding: 12, borderWidth: 1, borderColor: "#E2E8F0" }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Raw Data (Unclean):</Text>
+            <Text style={{ fontSize: 14, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: "#DC2626", marginBottom: 10, minHeight: 20 }}>
+              {rawData || "Waiting for data..."}
+            </Text>
+            
+            <Text style={{ fontSize: 12, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Parsed Weight (Clean):</Text>
+            <Text style={{ fontSize: 28, fontWeight: "bold", color: "#16A34A" }}>
+              {parsedWeight} <Text style={{ fontSize: 16, color: "#64748B" }}>kg</Text>
+            </Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function TableTimingCard() {
   const ctx = useSettings();
   const { settings } = ctx;
@@ -429,6 +583,1161 @@ function TableTimingCard() {
         </TouchableOpacity>
       </View>
       <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 8 }}>When ON, occupied tables show a live timer: 🟢 under 30 min, 🟠 under 1 hour, 🔴 over 1 hour.</Text>
+    </View>
+  );
+}
+
+// 🍳 RECIPE TRACKING CARD WITH EMBEDDED BUILDER
+function RecipeTrackingCard() {
+  const ctx = useSettings();
+  const { settings } = ctx;
+  const save = ctx.updateSettings || (() => {});
+  const on = Boolean(settings.recipeTrackingEnabled);
+  const [builderOpen, setBuilderOpen] = useState(false);
+
+  return (
+    <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", padding: 16, marginBottom: 14 }}>
+      <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 10 }}>🍳 Recipe & Ingredient Tracking</Text>
+      
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+        <TouchableOpacity 
+          style={{ flex: 1, backgroundColor: on ? "#43A047" : "#fff", borderWidth: 2, borderColor: on ? "#43A047" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} 
+          onPress={() => save({ recipeTrackingEnabled: true })}
+        >
+          <Text style={{ color: on ? "#fff" : "#64748B", fontWeight: "bold" }}>ON</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={{ flex: 1, backgroundColor: !on ? "#EF4444" : "#fff", borderWidth: 2, borderColor: !on ? "#EF4444" : "#E2E8F0", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} 
+          onPress={() => save({ recipeTrackingEnabled: false })}
+        >
+          <Text style={{ color: !on ? "#fff" : "#64748B", fontWeight: "bold" }}>OFF</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 10 }}>
+        Track raw ingredients (chicken, flour, oil), calculate true food costs, and auto-deduct stock when selling finished products.
+      </Text>
+
+      {on ? (
+        <View>
+          <View style={{ backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#86EFAC", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+            <Text style={{ fontSize: 12, color: "#166534", fontWeight: "600" }}>
+              ✅ Active - Ingredients are being tracked on every sale
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={{ backgroundColor: "#E8590C", borderRadius: 10, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 }} 
+            onPress={() => setBuilderOpen(true)}
+          >
+            <Text style={{ fontSize: 18 }}>🍳</Text>
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Open Recipe Builder</Text>
+          </TouchableOpacity>
+
+          {/* Recipe Builder Modal */}
+          <Modal visible={builderOpen} transparent animationType="slide">
+            <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)" }}>
+              <View style={{ flex: 1, backgroundColor: "#F1F5F9" }}>
+                <View style={{ 
+                  flexDirection: "row", 
+                  justifyContent: "space-between", 
+                  alignItems: "center", 
+                  padding: 16, 
+                  backgroundColor: "#fff",
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#E2E8F0"
+                }}>
+                  <Text style={{ fontSize: 20, fontWeight: "bold", color: "#0F172A" }}>🍳 Recipe Builder</Text>
+                  <TouchableOpacity 
+                    style={{ backgroundColor: "#EF4444", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
+                    onPress={() => setBuilderOpen(false)}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "bold" }}>✕ Close</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <ScrollView style={{ flex: 1, padding: 16 }}>
+                  <RecipeBuilderContent />
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        </View>
+      ) : (
+        <View style={{ backgroundColor: "#F1F5F9", borderRadius: 8, padding: 10 }}>
+          <Text style={{ fontSize: 12, color: "#64748B" }}>
+            ⚪ Disabled - No effect on your POS. Toggle ON to enable ingredient tracking.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// 🍳 EMBEDDED RECIPE BUILDER CONTENT - WITH COST ANALYSIS + STOCK TAB + DECIMAL FIX
+function RecipeBuilderContent() {
+  const [activeTab, setActiveTab] = useState("ingredients");
+  const [ingredients, setIngredients] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [recipes, setRecipes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  // Add ingredient form
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState("kg");
+  const [stock, setStock] = useState("");
+  const [minStock, setMinStock] = useState("");
+  const [cost, setCost] = useState("");
+
+  // Edit ingredient modal
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editUnit, setEditUnit] = useState("kg");
+  const [editStock, setEditStock] = useState("");
+  const [editMinStock, setEditMinStock] = useState("");
+  const [editCost, setEditCost] = useState("");
+
+  // Recipe editor modal
+  const [recipeModalOpen, setRecipeModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [baseItems, setBaseItems] = useState([]);
+  const [variantItems, setVariantItems] = useState({});
+  const [recipeLoading, setRecipeLoading] = useState(false);
+
+  // Ingredient picker
+  const [ingredientPickerOpen, setIngredientPickerOpen] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState("base");
+
+  // Stock tab state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [addStockModal, setAddStockModal] = useState(null);
+  const [addStockQty, setAddStockQty] = useState("");
+  const [calculateModalOpen, setCalculateModalOpen] = useState(false);
+  const [calculateData, setCalculateData] = useState(null);
+  const [calculating, setCalculating] = useState(false);
+
+  const UNITS = ["kg", "g", "l", "ml", "pcs"];
+
+  const filteredIngredients = ingredients.filter((i) =>
+    i.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // 💰 Cost calculation helpers
+  const calculateRecipeCost = (items) => {
+    let totalCost = 0;
+    items.forEach((item) => {
+      const ingredient = ingredients.find((i) => i.id === item.ingredient_id);
+      if (ingredient) totalCost += Number(ingredient.cost_per_unit || 0) * Number(item.quantity_required || 0);
+    });
+    return totalCost;
+  };
+
+  const getMarginColor = (margin) => margin >= 60 ? "#16A34A" : margin >= 40 ? "#F59E0B" : "#DC2626";
+  const getMarginLabel = (margin) => margin >= 60 ? "✅ Great" : margin >= 40 ? "⚠️ Okay" : "🔴 Low";
+
+  const getVariantPrice = (variantId) => {
+    if (!selectedProduct?.variants) return 0;
+    const v = selectedProduct.variants.find((v) => String(v.id) === String(variantId));
+    return v ? Number(v.price || 0) : 0;
+  };
+
+  const getBasePrice = () => {
+    if (!selectedProduct) return 0;
+    if (selectedProduct.variants && selectedProduct.variants.length > 0) return Number(selectedProduct.variants[0].price || 0);
+    return Number(selectedProduct.price || 0);
+  };
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [ingRes, prodRes, recRes] = await Promise.all([
+        api.get("/ingredients").catch(() => ({ data: [] })),
+        api.get("/inventory/products").catch(() => ({ data: [] })),
+        api.get("/recipes").catch(() => ({ data: [] })),
+      ]);
+      setIngredients(Array.isArray(ingRes.data) ? ingRes.data : []);
+      setProducts(Array.isArray(prodRes.data) ? prodRes.data : []);
+      setRecipes(Array.isArray(recRes.data) ? recRes.data : []);
+    } catch (error) {
+      console.error("Load data error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // ==================== INGREDIENTS TAB ====================
+
+  const addIngredient = async () => {
+    if (!name.trim()) {
+      Alert.alert("Error", "Name is required");
+      return;
+    }
+    try {
+      setSaving(true);
+      await api.post("/ingredients", {
+        name: name.trim(),
+        unit,
+        current_stock: Number(stock) || 0,
+        min_stock: Number(minStock) || 0,
+        cost_per_unit: Number(cost) || 0
+      });
+      setName("");
+      setStock("");
+      setMinStock("");
+      setCost("");
+      loadData();
+      Alert.alert("✅", "Ingredient added!");
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to add");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (ing) => {
+    setEditingId(ing.id);
+    setEditName(ing.name);
+    setEditUnit(ing.unit);
+    setEditStock(String(ing.current_stock));
+    setEditMinStock(String(ing.min_stock));
+    setEditCost(String(ing.cost_per_unit));
+    setEditModalOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editName.trim()) {
+      Alert.alert("Error", "Name is required");
+      return;
+    }
+    try {
+      await api.put(`/ingredients/${editingId}`, {
+        name: editName.trim(),
+        unit: editUnit,
+        current_stock: Number(editStock) || 0,
+        min_stock: Number(editMinStock) || 0,
+        cost_per_unit: Number(editCost) || 0
+      });
+      setEditModalOpen(false);
+      loadData();
+      Alert.alert("✅", "Ingredient updated!");
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to update");
+    }
+  };
+
+  const deleteIngredient = async (id, ingredientName) => {
+    try {
+      setDeletingId(id);
+      await api.delete(`/ingredients/${id}`);
+      loadData();
+      Alert.alert("✅", `"${ingredientName}" deleted!`);
+    } catch (error) {
+      Alert.alert("❌ Error", error.response?.data?.error || "Failed to delete");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // ==================== RECIPES TAB ====================
+
+  const openRecipeEditor = async (product) => {
+    setSelectedProduct(product);
+    setRecipeLoading(true);
+    setBaseItems([]);
+    setVariantItems({});
+
+    try {
+      const res = await api.get(`/recipes/product/${product.id}`);
+      const existing = Array.isArray(res.data) ? res.data : [];
+
+      let base = [];
+      let variants = {};
+
+      existing.forEach((recipe) => {
+        const items = Array.isArray(recipe.items) ? recipe.items : [];
+        if (!recipe.variant_id) {
+          base = items;
+        } else {
+          variants[String(recipe.variant_id)] = items;
+        }
+      });
+
+      setBaseItems(base);
+      setVariantItems(variants);
+    } catch (error) {
+      console.error("Load recipe error:", error);
+    } finally {
+      setRecipeLoading(false);
+      setRecipeModalOpen(true);
+    }
+  };
+
+  const openIngredientPicker = (target) => {
+    setPickerTarget(target);
+    setIngredientPickerOpen(true);
+  };
+
+  const addIngredientToRecipe = (ingredient) => {
+    const newItem = {
+      ingredient_id: ingredient.id,
+      ingredient_name: ingredient.name,
+      ingredient_unit: ingredient.unit,
+      quantity_required: "",
+    };
+
+    if (pickerTarget === "base") {
+      const exists = baseItems.find((i) => i.ingredient_id === ingredient.id);
+      if (!exists) {
+        setBaseItems([...baseItems, newItem]);
+      }
+    } else {
+      const variantId = pickerTarget;
+      const existing = variantItems[variantId] || [];
+      const exists = existing.find((i) => i.ingredient_id === ingredient.id);
+      if (!exists) {
+        setVariantItems({
+          ...variantItems,
+          [variantId]: [...existing, newItem],
+        });
+      }
+    }
+    setIngredientPickerOpen(false);
+  };
+
+  // DECIMAL FIX: keep as string while typing, convert only when saving
+  const updateRecipeQty = (target, ingredientId, qty) => {
+    if (target === "base") {
+      setBaseItems(
+        baseItems.map((i) =>
+          i.ingredient_id === ingredientId
+            ? { ...i, quantity_required: qty }
+            : i
+        )
+      );
+    } else {
+      const variantId = target;
+      setVariantItems({
+        ...variantItems,
+        [variantId]: (variantItems[variantId] || []).map((i) =>
+          i.ingredient_id === ingredientId
+            ? { ...i, quantity_required: qty }
+            : i
+        ),
+      });
+    }
+  };
+
+  const removeRecipeItem = (target, ingredientId) => {
+    if (target === "base") {
+      setBaseItems(baseItems.filter((i) => i.ingredient_id !== ingredientId));
+    } else {
+      const variantId = target;
+      setVariantItems({
+        ...variantItems,
+        [variantId]: (variantItems[variantId] || []).filter(
+          (i) => i.ingredient_id !== ingredientId
+        ),
+      });
+    }
+  };
+
+  const saveRecipe = async () => {
+    if (baseItems.length === 0) {
+      Alert.alert("Error", "Add at least one base ingredient");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await api.post("/recipes", {
+        product_id: selectedProduct.id,
+        variant_id: null,
+        items: baseItems.map((i) => ({
+          ingredient_id: i.ingredient_id,
+          quantity_required: Number(i.quantity_required) || 0,
+        })),
+      });
+
+      const variantIds = Object.keys(variantItems);
+      for (const variantId of variantIds) {
+        const items = variantItems[variantId];
+        if (items && items.length > 0) {
+          await api.post("/recipes", {
+            product_id: selectedProduct.id,
+            variant_id: Number(variantId),
+            items: items.map((i) => ({
+              ingredient_id: i.ingredient_id,
+              quantity_required: Number(i.quantity_required) || 0,
+            })),
+          });
+        }
+      }
+
+      setRecipeModalOpen(false);
+      loadData();
+      Alert.alert("✅", "Recipe saved for " + selectedProduct.name + "!");
+    } catch (error) {
+      console.error("Save recipe error:", error);
+      Alert.alert("Error", error.response?.data?.error || "Failed to save recipe");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hasRecipe = (productId) => {
+    return recipes.some((r) => String(r.product_id) === String(productId));
+  };
+
+  const getRecipeInfo = (productId) => {
+    const productRecipes = recipes.filter(
+      (r) => String(r.product_id) === String(productId)
+    );
+    if (productRecipes.length === 0) return null;
+    const totalIngredients = productRecipes.reduce(
+      (sum, r) => sum + (Array.isArray(r.items) ? r.items.length : 0),
+      0
+    );
+    return { count: productRecipes.length, totalIngredients };
+  };
+
+  // ==================== STOCK TAB ====================
+
+  const openAddStock = (ing) => {
+    setAddStockModal(ing);
+    setAddStockQty("");
+  };
+
+  const confirmAddStock = async () => {
+    if (!addStockModal) return;
+    if (!addStockQty || Number(addStockQty) <= 0) {
+      Alert.alert("Error", "Enter a valid quantity");
+      return;
+    }
+    try {
+      const newStock = Number(addStockModal.current_stock || 0) + Number(addStockQty);
+      await api.put(`/ingredients/${addStockModal.id}`, {
+        name: addStockModal.name,
+        unit: addStockModal.unit,
+        current_stock: newStock,
+        min_stock: Number(addStockModal.min_stock || 0),
+        cost_per_unit: Number(addStockModal.cost_per_unit || 0)
+      });
+      setAddStockModal(null);
+      setAddStockQty("");
+      loadData();
+      Alert.alert("✅", "Stock updated!");
+    } catch (error) {
+      Alert.alert("Error", "Failed to update stock");
+    }
+  };
+
+  const openCalculateModal = async () => {
+    try {
+      setCalculating(true);
+      const res = await api.get("/ingredients/preview-deduction");
+      setCalculateData(res.data);
+      setCalculateModalOpen(true);
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to calculate");
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  const confirmCalculate = async () => {
+    try {
+      setCalculating(true);
+      await api.post("/ingredients/calculate-deduction");
+      setCalculateModalOpen(false);
+      setCalculateData(null);
+      loadData();
+      Alert.alert("✅", "Ingredients deducted!");
+    } catch (error) {
+      Alert.alert("Error", error.response?.data?.error || "Failed to deduct");
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  // ==================== RENDER ====================
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Tabs - 3 tabs now */}
+      <View style={{ flexDirection: "row", backgroundColor: "#fff", borderRadius: 10, marginBottom: 16, borderWidth: 1, borderColor: "#E2E8F0" }}>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 12, alignItems: "center", backgroundColor: activeTab === "ingredients" ? "#E8590C" : "transparent", borderRadius: 10 }}
+          onPress={() => setActiveTab("ingredients")}
+        >
+          <Text style={{ fontWeight: "bold", color: activeTab === "ingredients" ? "#fff" : "#64748B", fontSize: 12 }}>
+            📦 Ingredients ({ingredients.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 12, alignItems: "center", backgroundColor: activeTab === "recipes" ? "#E8590C" : "transparent", borderRadius: 10 }}
+          onPress={() => setActiveTab("recipes")}
+        >
+          <Text style={{ fontWeight: "bold", color: activeTab === "recipes" ? "#fff" : "#64748B", fontSize: 12 }}>
+            🍳 Recipes ({recipes.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, paddingVertical: 12, alignItems: "center", backgroundColor: activeTab === "stock" ? "#E8590C" : "transparent", borderRadius: 10 }}
+          onPress={() => setActiveTab("stock")}
+        >
+          <Text style={{ fontWeight: "bold", color: activeTab === "stock" ? "#fff" : "#64748B", fontSize: 12 }}>
+            📊 Stock
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === "ingredients" ? (
+        <View>
+          <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 16 }}>
+            <Text style={{ fontSize: 16, fontWeight: "bold", color: "#0F172A", marginBottom: 12 }}>➕ Add New Ingredient</Text>
+            
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Name *</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", marginBottom: 10, color: "#0F172A" }}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g., Chicken, Flour, Oil"
+              placeholderTextColor="#94A3B8"
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Unit</Text>
+            <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+              {UNITS.map((u) => (
+                <TouchableOpacity
+                  key={u}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    backgroundColor: unit === u ? "#43A047" : "#fff",
+                    borderWidth: 1,
+                    borderColor: unit === u ? "#43A047" : "#CBD5E1"
+                  }}
+                  onPress={() => setUnit(u)}
+                >
+                  <Text style={{ color: unit === u ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{u}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Current Stock</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", color: "#0F172A" }}
+                  value={stock}
+                  onChangeText={setStock}
+                  placeholder="0"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Min Stock</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", color: "#0F172A" }}
+                  value={minStock}
+                  onChangeText={setMinStock}
+                  placeholder="0"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+            </View>
+
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Cost per {unit}</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", marginBottom: 12, color: "#0F172A" }}
+              value={cost}
+              onChangeText={setCost}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              placeholderTextColor="#94A3B8"
+            />
+
+            <TouchableOpacity
+              style={{ backgroundColor: "#43A047", borderRadius: 10, paddingVertical: 14, alignItems: "center" }}
+              onPress={addIngredient}
+              disabled={saving}
+            >
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>
+                {saving ? "Saving..." : "➕ Add Ingredient"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {loading ? (
+            <View style={{ alignItems: "center", paddingVertical: 30 }}>
+              <ActivityIndicator size="large" color="#E8590C" />
+              <Text style={{ color: "#64748B", marginTop: 10 }}>Loading...</Text>
+            </View>
+          ) : ingredients.length === 0 ? (
+            <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 30, alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" }}>
+              <Text style={{ fontSize: 40, marginBottom: 10 }}>📦</Text>
+              <Text style={{ color: "#94A3B8", textAlign: "center" }}>No ingredients yet. Add your first ingredient above.</Text>
+            </View>
+          ) : (
+            ingredients.map((ing) => {
+              const isLow = Number(ing.current_stock) <= Number(ing.min_stock);
+              const isDeleting = deletingId === ing.id;
+              return (
+                <View key={ing.id} style={{ backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "bold", color: "#0F172A" }}>{ing.name}</Text>
+                      <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                        Stock: {Number(ing.current_stock).toFixed(2)} {ing.unit} • Min: {Number(ing.min_stock).toFixed(2)} {ing.unit}
+                      </Text>
+                    </View>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: isLow ? "#FEE2E2" : "#DCFCE7" }}>
+                      <Text style={{ fontSize: 10, fontWeight: "bold", color: isLow ? "#DC2626" : "#16A34A" }}>
+                        {isLow ? "⚠️ LOW" : "✅ OK"}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+                    <TouchableOpacity
+                      style={{ backgroundColor: "#0EA5E9", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={() => openEdit(ing)}
+                      disabled={isDeleting}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✏️ Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: "#EF4444", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6, opacity: isDeleting ? 0.5 : 1 }}
+                      onPress={() => deleteIngredient(ing.id, ing.name)}
+                      disabled={isDeleting}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>
+                        {isDeleting ? "⏳" : "🗑 Delete"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+      ) : activeTab === "recipes" ? (
+        <View>
+          {loading ? (
+            <View style={{ alignItems: "center", paddingVertical: 30 }}>
+              <ActivityIndicator size="large" color="#E8590C" />
+              <Text style={{ color: "#64748B", marginTop: 10 }}>Loading products...</Text>
+            </View>
+          ) : products.length === 0 ? (
+            <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 30, alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" }}>
+              <Text style={{ fontSize: 40, marginBottom: 10 }}>🍽️</Text>
+              <Text style={{ color: "#94A3B8", textAlign: "center" }}>No products found. Add products in Inventory first.</Text>
+            </View>
+          ) : (
+            products.map((product) => {
+              const hasRec = hasRecipe(product.id);
+              const recInfo = getRecipeInfo(product.id);
+              return (
+                <View key={product.id} style={{ backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "bold", color: "#0F172A" }}>{product.name}</Text>
+                      <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                        {(product.variants || []).length} variant{(product.variants || []).length !== 1 ? "s" : ""}
+                      </Text>
+                      {hasRec && recInfo && (
+                        <Text style={{ fontSize: 11, color: "#16A34A", marginTop: 2 }}>
+                          ✅ {recInfo.totalIngredients} ingredients linked
+                        </Text>
+                      )}
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        backgroundColor: hasRec ? "#DCFCE7" : "#F1F5F9"
+                      }}>
+                        <Text style={{ fontSize: 10, fontWeight: "bold", color: hasRec ? "#16A34A" : "#94A3B8" }}>
+                          {hasRec ? "✅ HAS RECIPE" : "📝 NO RECIPE"}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={{ backgroundColor: "#E8590C", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
+                        onPress={() => openRecipeEditor(product)}
+                      >
+                        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>
+                          {hasRec ? "✏️ Edit" : "➕ Create"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+      ) : (
+        <View>
+          <TextInput style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#fff", marginBottom: 12, color: "#0F172A" }} placeholder="🔍 Search ingredients..." placeholderTextColor="#94A3B8" value={searchQuery} onChangeText={setSearchQuery} />
+
+          <TouchableOpacity style={{ backgroundColor: "#7C3AED", borderRadius: 10, paddingVertical: 12, alignItems: "center", marginBottom: 14, opacity: calculating ? 0.6 : 1 }} onPress={openCalculateModal} disabled={calculating}>
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 14 }}>{calculating ? "⏳ Loading..." : "🧮 Calculate Recipe Deduction"}</Text>
+          </TouchableOpacity>
+
+          {filteredIngredients.length === 0 ? (
+            <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 30, alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" }}>
+              <Text style={{ color: "#94A3B8" }}>No ingredients found.</Text>
+            </View>
+          ) : (
+            filteredIngredients.map((ing) => {
+              const isLow = Number(ing.current_stock) <= Number(ing.min_stock);
+              return (
+                <View key={ing.id} style={{ backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 10 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "bold", color: "#0F172A" }}>{ing.name}</Text>
+                      <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>Stock: {Number(ing.current_stock).toFixed(2)} {ing.unit} • Min: {Number(ing.min_stock).toFixed(2)} {ing.unit}</Text>
+                      <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>Cost: {Number(ing.cost_per_unit || 0).toFixed(2)} / {ing.unit}</Text>
+                    </View>
+
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: isLow ? "#FEE2E2" : "#DCFCE7" }}>
+                        <Text style={{ fontSize: 10, fontWeight: "bold", color: isLow ? "#DC2626" : "#16A34A" }}>{isLow ? "⚠️ LOW" : "✅ OK"}</Text>
+                      </View>
+                      <TouchableOpacity style={{ backgroundColor: "#0EA5E9", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }} onPress={() => openAddStock(ing)}>
+                        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 11 }}>+ Stock</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+      )}
+
+      {/* ==================== RECIPE EDITOR MODAL ==================== */}
+      <Modal visible={recipeModalOpen} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)" }}>
+          <View style={{ flex: 1, backgroundColor: "#F1F5F9", marginTop: 40 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E2E8F0" }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 18, fontWeight: "bold", color: "#0F172A" }}>
+                  🍳 Recipe: {selectedProduct?.name}
+                </Text>
+                <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                  Base + variant additions
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: "#EF4444", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                onPress={() => setRecipeModalOpen(false)}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>✕ Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ flex: 1, padding: 16 }}>
+              {recipeLoading ? (
+                <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                  <ActivityIndicator size="large" color="#E8590C" />
+                  <Text style={{ color: "#64748B", marginTop: 10 }}>Loading recipe...</Text>
+                </View>
+              ) : (
+                <View>
+                  <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 16 }}>
+                    <Text style={{ fontSize: 15, fontWeight: "bold", color: "#0F172A", marginBottom: 4 }}>
+                      📋 Base Ingredients (all variants)
+                    </Text>
+                    <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 12 }}>
+                      These ingredients are used for every variant of this product.
+                    </Text>
+
+                    {baseItems.length === 0 ? (
+                      <Text style={{ fontSize: 13, color: "#94A3B8", textAlign: "center", paddingVertical: 10 }}>
+                        No base ingredients added yet
+                      </Text>
+                    ) : (
+                      baseItems.map((item) => (
+                        <View key={item.ingredient_id} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, backgroundColor: "#F8FAFC", borderRadius: 8, padding: 10 }}>
+                          <Text style={{ flex: 1, fontSize: 13, fontWeight: "600", color: "#0F172A" }}>
+                            {item.ingredient_name}
+                          </Text>
+                          <TextInput
+                            style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6, fontSize: 13, backgroundColor: "#fff", width: 70, textAlign: "center", color: "#0F172A" }}
+                            value={String(item.quantity_required)}
+                            onChangeText={(t) => updateRecipeQty("base", item.ingredient_id, t)}
+                            keyboardType="decimal-pad"
+                            placeholder="0"
+                            placeholderTextColor="#94A3B8"
+                          />
+                          <Text style={{ fontSize: 11, color: "#64748B", width: 30 }}>
+                            {item.ingredient_unit}
+                          </Text>
+                          <TouchableOpacity
+                            style={{ backgroundColor: "#FEE2E2", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}
+                            onPress={() => removeRecipeItem("base", item.ingredient_id)}
+                          >
+                            <Text style={{ color: "#DC2626", fontWeight: "bold", fontSize: 12 }}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))
+                    )}
+
+                    <TouchableOpacity
+                      style={{ backgroundColor: "#E8590C", borderRadius: 8, paddingVertical: 10, alignItems: "center", marginTop: 8 }}
+                      onPress={() => openIngredientPicker("base")}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 13 }}>➕ Add Ingredient</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {(selectedProduct?.variants || []).length > 1 ? (
+                    <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 16 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "bold", color: "#0F172A", marginBottom: 4 }}>
+                        🔀 Variant Additions (extra per variant)
+                      </Text>
+                      <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 12 }}>
+                        Extra ingredients added on top of base when this variant is sold.
+                      </Text>
+
+                      {(selectedProduct?.variants || []).map((variant) => {
+                        const vItems = variantItems[String(variant.id)] || [];
+                        return (
+                          <View key={variant.id} style={{ marginBottom: 12, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, padding: 10 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "bold", color: "#334155", marginBottom: 6 }}>
+                              📦 {variant.name}
+                            </Text>
+
+                            {vItems.length === 0 ? (
+                              <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 6 }}>
+                                No extra ingredients (uses base only)
+                              </Text>
+                            ) : (
+                              vItems.map((item) => (
+                                <View key={item.ingredient_id} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6, backgroundColor: "#F8FAFC", borderRadius: 6, padding: 8 }}>
+                                  <Text style={{ flex: 1, fontSize: 12, fontWeight: "600", color: "#0F172A" }}>
+                                    +{item.ingredient_name}
+                                  </Text>
+                                  <TextInput
+                                    style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 12, backgroundColor: "#fff", width: 60, textAlign: "center", color: "#0F172A" }}
+                                    value={String(item.quantity_required)}
+                                    onChangeText={(t) => updateRecipeQty(String(variant.id), item.ingredient_id, t)}
+                                    keyboardType="decimal-pad"
+                                    placeholder="0"
+                                    placeholderTextColor="#94A3B8"
+                                  />
+                                  <Text style={{ fontSize: 10, color: "#64748B", width: 28 }}>
+                                    {item.ingredient_unit}
+                                  </Text>
+                                  <TouchableOpacity
+                                    style={{ backgroundColor: "#FEE2E2", paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4 }}
+                                    onPress={() => removeRecipeItem(String(variant.id), item.ingredient_id)}
+                                  >
+                                    <Text style={{ color: "#DC2626", fontWeight: "bold", fontSize: 11 }}>✕</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))
+                            )}
+
+                            <TouchableOpacity
+                              style={{ backgroundColor: "#F1F5F9", borderRadius: 6, paddingVertical: 8, alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" }}
+                              onPress={() => openIngredientPicker(String(variant.id))}
+                            >
+                              <Text style={{ color: "#64748B", fontWeight: "600", fontSize: 12 }}>+ Add Extra</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <View style={{ backgroundColor: "#F1F5F9", borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                      <Text style={{ fontSize: 12, color: "#64748B", textAlign: "center" }}>
+                        ℹ️ Single variant product — only base ingredients needed.
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* 💰 COST ANALYSIS PANEL */}
+                  <View style={{ backgroundColor: "#FFFBEB", borderRadius: 10, padding: 14, borderWidth: 1, borderColor: "#FDE68A", marginBottom: 14 }}>
+                    <Text style={{ fontSize: 15, fontWeight: "bold", color: "#92400E", marginBottom: 10 }}>💰 Cost Analysis</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, color: "#78350F" }}>Recipe Cost:</Text>
+                      <Text style={{ fontSize: 13, fontWeight: "bold", color: "#78350F" }}>{calculateRecipeCost(baseItems).toFixed(2)}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, color: "#78350F" }}>Sale Price:</Text>
+                      <Text style={{ fontSize: 13, fontWeight: "bold", color: "#78350F" }}>{getBasePrice().toFixed(2)}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 13, color: "#78350F" }}>Profit:</Text>
+                      <Text style={{ fontSize: 13, fontWeight: "bold", color: "#78350F" }}>{(getBasePrice() - calculateRecipeCost(baseItems)).toFixed(2)}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                      <Text style={{ fontSize: 13, color: "#78350F" }}>Margin:</Text>
+                      <Text style={{ fontSize: 13, fontWeight: "bold", color: getMarginColor(getBasePrice() > 0 ? ((getBasePrice() - calculateRecipeCost(baseItems)) / getBasePrice()) * 100 : 0) }}>
+                        {getBasePrice() > 0 ? (((getBasePrice() - calculateRecipeCost(baseItems)) / getBasePrice()) * 100).toFixed(1) : "0"}% {getMarginLabel(getBasePrice() > 0 ? ((getBasePrice() - calculateRecipeCost(baseItems)) / getBasePrice()) * 100 : 0)}
+                      </Text>
+                    </View>
+
+                    {(selectedProduct?.variants || []).length > 1 ? (
+                      <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: "#FDE68A", paddingTop: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: "bold", color: "#92400E", marginBottom: 6 }}>🔀 Variants:</Text>
+                        {(selectedProduct?.variants || []).slice(1).map((variant) => {
+                          const vItems = variantItems[String(variant.id)] || [];
+                          const vCost = calculateRecipeCost(baseItems) + calculateRecipeCost(vItems);
+                          const vPrice = getVariantPrice(variant.id);
+                          const vMargin = vPrice > 0 ? ((vPrice - vCost) / vPrice) * 100 : 0;
+                          return (
+                            <View key={variant.id} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                              <Text style={{ fontSize: 11, color: "#78350F" }}>📦 {variant.name}: Cost {vCost.toFixed(0)} | Price {vPrice.toFixed(0)}</Text>
+                              <Text style={{ fontSize: 11, fontWeight: "bold", color: getMarginColor(vMargin) }}>{vMargin.toFixed(0)}%</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <TouchableOpacity
+                    style={{ backgroundColor: "#43A047", borderRadius: 10, paddingVertical: 14, alignItems: "center", opacity: saving ? 0.6 : 1 }}
+                    onPress={saveRecipe}
+                    disabled={saving}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
+                      {saving ? "⏳ Saving..." : "💾 Save Recipe"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== INGREDIENT PICKER MODAL ==================== */}
+      <Modal visible={ingredientPickerOpen} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 400, maxHeight: "70%" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <Text style={{ fontSize: 18, fontWeight: "bold", color: "#0F172A" }}>
+                📦 Select Ingredient
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: "#EF4444", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                onPress={() => setIngredientPickerOpen(false)}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 12 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 350 }}>
+              {ingredients.length === 0 ? (
+                <Text style={{ fontSize: 13, color: "#94A3B8", textAlign: "center", paddingVertical: 20 }}>
+                  No ingredients available. Add ingredients first.
+                </Text>
+              ) : (
+                ingredients.map((ing) => (
+                  <TouchableOpacity
+                    key={ing.id}
+                    style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" }}
+                    onPress={() => addIngredientToRecipe(ing)}
+                  >
+                    <View>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#0F172A" }}>{ing.name}</Text>
+                      <Text style={{ fontSize: 11, color: "#94A3B8" }}>
+                        Stock: {Number(ing.current_stock).toFixed(1)} {ing.unit}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 12, color: "#E8590C", fontWeight: "bold" }}>+ Add</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== ADD STOCK MODAL ==================== */}
+      <Modal visible={Boolean(addStockModal)} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 400 }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: "#0F172A", marginBottom: 12 }}>
+              📦 Add Stock: {addStockModal?.name}
+            </Text>
+            <Text style={{ fontSize: 13, color: "#64748B", marginBottom: 8 }}>
+              Current: {Number(addStockModal?.current_stock || 0).toFixed(2)} {addStockModal?.unit}
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, backgroundColor: "#F8FAFC", marginBottom: 8, color: "#0F172A" }}
+              value={addStockQty}
+              onChangeText={setAddStockQty}
+              placeholder={`Quantity (${addStockModal?.unit || ""})`}
+              placeholderTextColor="#94A3B8"
+              keyboardType="decimal-pad"
+            />
+            {addStockQty && Number(addStockQty) > 0 ? (
+              <Text style={{ fontSize: 13, color: "#16A34A", marginBottom: 12 }}>
+                New Stock: {(Number(addStockModal?.current_stock || 0) + Number(addStockQty)).toFixed(2)} {addStockModal?.unit}
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, paddingVertical: 12, alignItems: "center" }}
+                onPress={() => { setAddStockModal(null); setAddStockQty(""); }}
+              >
+                <Text style={{ color: "#64748B", fontWeight: "bold" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: "#0EA5E9", borderRadius: 8, paddingVertical: 12, alignItems: "center" }}
+                onPress={confirmAddStock}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>+ Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== CALCULATE DEDUCTION MODAL ==================== */}
+      <Modal visible={calculateModalOpen} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420 }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: "#0F172A", marginBottom: 16 }}>🧮 Calculate Deduction</Text>
+            {calculateData ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 14, color: "#334155", marginBottom: 8 }}>
+                  📊 Orders since last calculation: <Text style={{ fontWeight: "bold" }}>{calculateData.order_count || 0}</Text>
+                </Text>
+                <Text style={{ fontSize: 14, color: "#334155", marginBottom: 8 }}>
+                  🚫 Skipped (cancelled/refunded): <Text style={{ fontWeight: "bold" }}>{calculateData.skipped_count || 0}</Text>
+                </Text>
+                {calculateData.low_stock_warnings && calculateData.low_stock_warnings.length > 0 ? (
+                  <View style={{ backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10, marginTop: 8 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "bold", color: "#92400E", marginBottom: 6 }}>⚠️ Low Stock:</Text>
+                    {calculateData.low_stock_warnings.map((w, idx) => (
+                      <Text key={idx} style={{ fontSize: 12, color: "#78350F", marginBottom: 2 }}>
+                        • {w.name} (have: {w.current}, need: {w.needed})
+                      </Text>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={{ backgroundColor: "#F0FDF4", borderRadius: 8, padding: 10, marginTop: 8 }}>
+                    <Text style={{ fontSize: 13, color: "#166534" }}>✅ All ingredients have enough stock</Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <ActivityIndicator size="large" color="#7C3AED" style={{ marginBottom: 14 }} />
+            )}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, paddingVertical: 12, alignItems: "center" }}
+                onPress={() => { setCalculateModalOpen(false); setCalculateData(null); }}
+              >
+                <Text style={{ color: "#64748B", fontWeight: "bold" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: "#7C3AED", borderRadius: 8, paddingVertical: 12, alignItems: "center", opacity: calculating ? 0.6 : 1 }}
+                onPress={confirmCalculate}
+                disabled={calculating}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>{calculating ? "⏳..." : "✅ Confirm"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ==================== EDIT INGREDIENT MODAL ==================== */}
+      <Modal visible={editModalOpen} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <View style={{ backgroundColor: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 400 }}>
+            <Text style={{ fontSize: 20, fontWeight: "bold", color: "#0F172A", marginBottom: 16 }}>✏️ Edit Ingredient</Text>
+
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Name</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", marginBottom: 10, color: "#0F172A" }}
+              value={editName}
+              onChangeText={setEditName}
+            />
+
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Unit</Text>
+            <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+              {UNITS.map((u) => (
+                <TouchableOpacity
+                  key={u}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    backgroundColor: editUnit === u ? "#43A047" : "#fff",
+                    borderWidth: 1,
+                    borderColor: editUnit === u ? "#43A047" : "#CBD5E1"
+                  }}
+                  onPress={() => setEditUnit(u)}
+                >
+                  <Text style={{ color: editUnit === u ? "#fff" : "#64748B", fontWeight: "bold", fontSize: 12 }}>{u}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Stock</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", color: "#0F172A" }}
+                  value={editStock}
+                  onChangeText={setEditStock}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Min Stock</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", color: "#0F172A" }}
+                  value={editMinStock}
+                  onChangeText={setEditMinStock}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 4 }}>Cost per {editUnit}</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: "#CBD5E1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, backgroundColor: "#F8FAFC", marginBottom: 16, color: "#0F172A" }}
+              value={editCost}
+              onChangeText={setEditCost}
+              keyboardType="decimal-pad"
+            />
+
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, paddingVertical: 12, alignItems: "center" }}
+                onPress={() => setEditModalOpen(false)}
+              >
+                <Text style={{ color: "#64748B", fontWeight: "bold" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: "#43A047", borderRadius: 8, paddingVertical: 12, alignItems: "center" }}
+                onPress={saveEdit}
+              >
+                <Text style={{ color: "#fff", fontWeight: "bold" }}>💾 Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -873,11 +2182,17 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>📲 QR Ordering</Text>
         <QROrderingCard />
 
+        <Text style={styles.sectionTitle}>🍳 Recipe Tracking</Text>
+        <RecipeTrackingCard />
+
         <Text style={styles.sectionTitle}>💰 Cash Drawer</Text>
         <CashDrawerCard />
 
         <Text style={styles.sectionTitle}>⚖️ Scale Barcode</Text>
         <ScaleBarcodeCard />
+
+        <Text style={styles.sectionTitle}>🔌 Serial Scale (COM Port)</Text>
+        <SerialScaleCard />
 
         <Text style={styles.sectionTitle}>{t("kitchenPrinter") || "Kitchen Printer"}</Text>
         <KitchenPrinterCard />
@@ -931,6 +2246,7 @@ export default function SettingsScreen() {
             <Text style={styles.testButtonText}>{t("testPrint")}</Text>
           </TouchableOpacity>
         </View>
+
         <Text style={styles.sectionTitle}>{t("receiptDesign")}</Text>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>{t("headerLogo")}</Text>
